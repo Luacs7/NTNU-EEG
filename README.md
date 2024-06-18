@@ -8,3 +8,6 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 Do this command AFTER working on the projet
 deactivate
+
+--Install the packages for the project
+pip install -r requirements.txt

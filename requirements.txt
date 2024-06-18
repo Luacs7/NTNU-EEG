@@ -1,0 +1,4 @@
+# Exemple of a file requirements.txt
+
+# principal dependency
+django==3.2.4
