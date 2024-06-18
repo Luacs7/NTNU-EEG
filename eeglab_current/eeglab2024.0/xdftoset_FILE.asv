@@ -1,0 +1,9 @@
+
+chdir(file);
+LIST_xdf = ls('*.xdf');
+LIST_set= ls('*.set');
+OUTPUT_xdf=extractFilenamesCharArray(LIST_xdf);
+OUTPUT_set=extractFilenamesCharArray(LIST_xdf);
+for i = 1!OUTPUT_xdf
+    output
+end
