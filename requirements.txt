@@ -1,4 +1,6 @@
 # Exemple of a file requirements.txt
 
 # principal dependency
-django==3.2.4
+pygame==2.1.2
+python-osc>=1.0.0,<2.0.0
+pylsl==1.13.0
