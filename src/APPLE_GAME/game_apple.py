@@ -10,7 +10,12 @@ import os
 # Logger setup for debugging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-os.chdir('C:/Users/robinaki/Desktop/APPLE_GAME')
+# Absolute path of the current script's directory
+script_directory = os.path.dirname(os.path.abspath(__file__))
+# Construct the absolute path to 'src/APPLE_GAME'
+apple_game_directory = os.path.join(script_directory, '..', 'APPLE_GAME')
+# Change the current working directory to 'src/APPLE_GAME'
+os.chdir(apple_game_directory)
 # Create a new stream for markers
 load_time_seconds_before = 2  # Time between each apple drop
 load_time_seconds_marker = 1
