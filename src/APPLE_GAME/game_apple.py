@@ -206,6 +206,68 @@ class Game:
             self.marker_not_finished = False
         if elapsed_time >= self.ldtb + self.ldtm + 0.1:
             self.marker_finished = True
+
+    def show_menu(self):
+        menu_font = pygame.font.SysFont(None, 36)
+        title_font = pygame.font.SysFont(None, 54)
+        title = title_font.render('Apple Catcher Game', True, (0, 0, 0))
+        start_text = menu_font.render('Start Game', True, (0, 0, 0))
+        quit_text = menu_font.render('Quit', True, (0, 0, 0))
+        
+        title_rect = title.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2))
+        start_rect = start_text.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 100))
+        quit_rect = quit_text.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 150))
+
+        mode_font = pygame.font.SysFont(None, 24)
+        mode_0 = mode_font.render('Test', True, (0,0,0))
+        mode_1 = mode_font.render('Training', True, (0,0,0))
+        mode_2 = mode_font.render('Define', True, (0,0,0))
+        mode_0_rect = mode_0.get_rect(center=(SCREEN_WIDTH/4,SCREEN_HEIGHT-100))
+        mode_1_rect = mode_1.get_rect(center=(SCREEN_WIDTH/2,SCREEN_HEIGHT-100))
+        mode_2_rect = mode_2.get_rect(center=((SCREEN_WIDTH*3)/4,SCREEN_HEIGHT-100))
+
+        while True:
+            self.screen.fill(BACKGROUND_COLOR)
+            self.draw_background()
+            self.screen.blit(title, title_rect)
+            self.screen.blit(start_text, start_rect)
+            self.screen.blit(quit_text, quit_rect)
+
+            self.screen.blit(mode_0, mode_0_rect)
+            self.screen.blit(mode_1, mode_1_rect)
+            self.screen.blit(mode_2, mode_2_rect)
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    mouse_pos = pygame.mouse.get_pos()
+                    if start_rect.collidepoint(mouse_pos):
+                        return 'start'
+                    elif quit_rect.collidepoint(mouse_pos):
+                        pygame.quit()
+                        sys.exit()
+                    if mode_0_rect.collidepoint(mouse_pos):
+                        TRAINING_MODE=0
+                        mode_0 = mode_font.render('Test', True, (255,0,0))
+                        mode_1 = mode_font.render('Training', True, (0,0,0))
+                        mode_2 = mode_font.render('Define', True, (0,0,0))
+                    if mode_1_rect.collidepoint(mouse_pos):
+                        TRAINING_MODE=1
+                        mode_0 = mode_font.render('Test', True, (0,0,0))
+                        mode_1 = mode_font.render('Training', True, (255,0,0))
+                        mode_2 = mode_font.render('Define', True, (0,0,0))                       
+                    if mode_2_rect.collidepoint(mouse_pos):
+                        TRAINING_MODE=2
+                        mode_0 = mode_font.render('Test', True, (0,0,0))
+                        mode_1 = mode_font.render('Training', True, (0,0,0))
+                        mode_2 = mode_font.render('Define', True, (255,0,0))
+
+
+            pygame.display.flip()
+            pygame.time.Clock().tick(FPS)
+
     def run(self):
         running = True
         while running:
@@ -233,43 +295,12 @@ class Game:
         pygame.quit()
         sys.exit()
 
-def show_menu(screen):
-    menu_font = pygame.font.SysFont(None, 36)
-    title_font = pygame.font.SysFont(None, 54)
-    title = title_font.render('Apple Catcher Game', True, (0, 0, 0))
-    start_text = menu_font.render('Start Game', True, (0, 0, 0))
-    quit_text = menu_font.render('Quit', True, (0, 0, 0))
-    
-    title_rect = title.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 4))
-    start_rect = start_text.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2))
-    quit_rect = quit_text.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 50))
 
-
-    while True:
-        screen.fill(BACKGROUND_COLOR)
-        screen.blit(title, title_rect)
-        screen.blit(start_text, start_rect)
-        screen.blit(quit_text, quit_rect)
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                mouse_pos = pygame.mouse.get_pos()
-                if start_rect.collidepoint(mouse_pos):
-                    return 'start'
-                elif quit_rect.collidepoint(mouse_pos):
-                    pygame.quit()
-                    sys.exit()
-
-        pygame.display.flip()
-        pygame.time.Clock().tick(FPS)
 
 if __name__ == "__main__":
     start_osc_server()
     game = Game(PLAYER_HEIGHT,PLAYER_WIDTH,SCREEN_WIDTH,LOAD_BAR_HEIGHT,SCREEN_HEIGHT,APPLE_SIZE,TRAINING_MODE,load_time_seconds_before,load_time_seconds_marker,load_time_seconds)
 
-    if show_menu(game.screen)=='start':
+    if game.show_menu()=='start':
         game.start_time=time.time()
         game.run()
