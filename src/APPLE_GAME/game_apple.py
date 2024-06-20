@@ -14,12 +14,12 @@ os.chdir('C:/Users/robinaki/Desktop/APPLE_GAME')
 # Create a new stream for markers
 load_time_seconds_before = 2  # Time between each apple drop
 load_time_seconds_marker = 1
-load_time_seconds = 4
+load_time_seconds = 6
 info = StreamInfo('markers', 'Markers', 1, 1/load_time_seconds, 'string', 'MyMarkerStream')
 outlet = StreamOutlet(info)
 
 # Constants
-TRAINING_MODE = True
+TRAINING_MODE = 2
 SCREEN_WIDTH = 400
 SCREEN_HEIGHT = 600
 PLAYER_WIDTH = 150
@@ -33,7 +33,7 @@ LEFT_HAND_CLOSED_PATH = "left_hand_closed.png"  # Path to the left hand closed i
 RIGHT_HAND_OPEN_PATH = "right_hand_open.png"  # Path to the right hand open image
 RIGHT_HAND_CLOSED_PATH = "right_hand_closed.png"  # Path to the right hand closed image
 APPLE_IMAGE_PATH = "apple.png"  # Path to the apple image
-TREE_IMAGE_PATH = "tree.png"
+TREE_IMAGE_PATH = "treee.png"
 LOAD_BAR_HEIGHT = 20
 LOAD_BAR_COLOR = (0, 255, 0)  # Green color for the load bar
 MARKER_BAR_COLOR = (255, 128, 0)  # Orange color for the marker line
@@ -81,7 +81,8 @@ class Game:
         self.start_time = time.time()
         self.input_processed= True
         self.tree_image = pygame.image.load(TREE_IMAGE_PATH)
-
+        self.marker_not_finished = True
+        self.prob = 0.2
         # Load and scale images
         self.left_hand_open = pygame.image.load(LEFT_HAND_OPEN_PATH)
         self.left_hand_open = pygame.transform.scale(self.left_hand_open, (PLAYER_WIDTH, PLAYER_HEIGHT))
@@ -124,42 +125,46 @@ class Game:
             self.input_processed= True
             self.start_time = time.time()
             self.marker_sent = False
+            self.hand_status["left"] = "closed"
+            self.hand_status["right"] = "closed"
 
     def handle_input(self):
         global p
-        if self.TRAINING_MODE:
-            prob = int(self.apple_pos[0]/(SCREEN_WIDTH // 2) + 0.5 )
-        else:
-            prob = p
-        if not(self.input_processed):
-            if prob < 0.5:  # Open left hand
-                self.hand_status["left"] = "open"
-                self.hand_status["right"] = "closed"
-                self.check_catch("left")
-            else:  # Open right hand
-                self.hand_status["right"] = "open"
-                self.hand_status["left"] = "closed"
-                self.check_catch("right")
+        if self.input_processed == False:
+            if self.TRAINING_MODE:
+                self.prob = int(self.apple_pos[0]/(SCREEN_WIDTH // 2) + 0.5 )
+                self.input_processed = True
+            if self.TRAINING_MODE==2:
+                self.prob = random.choice([int(self.apple_pos[0]/(SCREEN_WIDTH // 2) + 0.5 ),random.random(),int(self.apple_pos[0]/(SCREEN_WIDTH // 2) + 0.5 )])
+                self.input_processed = True
+            else:
+                self.prob = p
+        if self.prob < 0.5 and self.marker_finished:  # Open left hand
+            self.hand_status["left"] = "open"
+            self.hand_status["right"] = "closed"
+            self.check_catch("left")
+        if self.prob >= 0.5 and self.marker_finished:  # Open right hand
+            self.hand_status["right"] = "open"
+            self.hand_status["left"] = "closed"
+            self.check_catch("right")
 
     def check_catch(self, hand):
         if hand == "left" and self.apple_pos[0] < SCREEN_WIDTH // 2:
             print(self.apple_pos[1] + APPLE_SIZE- self.player_pos[1])
             if self.apple_pos[1]  >= self.player_pos[1]:
-                self.input_processed= True
                 self.score += 1
                 self.hand_status["left"] = "closed"
                 self.apple_pos = [self.get_random_apple_position(), 0]
                 self.start_time = time.time()
                 self.marker_sent = False
+
         elif hand == "right" and self.apple_pos[0] >= SCREEN_WIDTH // 2:
             if self.apple_pos[1]  >= self.player_pos[1]:
                 self.score += 1
-                self.input_processed= True
                 self.hand_status["right"] = "closed"
                 self.apple_pos = [self.get_random_apple_position(), 0]
                 self.start_time = time.time()
                 self.marker_sent = False
-
     def draw_scoreboard(self):
         score_text = self.font.render(f'Score: {self.score}', True, (0, 0, 0))
         failures_text = self.font.render(f'Failures: {self.failures}', True, (255, 0, 0))
@@ -182,20 +187,24 @@ class Game:
         pygame.draw.rect(self.screen, MARKER_BAR_COLOR, marker_rect)
         marker_rect_end = pygame.Rect(marker_position_end, SCREEN_HEIGHT, 2, LOAD_BAR_HEIGHT)
         pygame.draw.rect(self.screen, MARKER_BAR_COLOR, marker_rect_end)
+        if elapsed_time < self.ldtb  and not(self.marker_sent):
+            self.marker_not_finished = True
+            self.marker_finished = False
         if elapsed_time >= self.ldtb  and not(self.marker_sent):
             if self.apple_pos[0] < SCREEN_WIDTH // 2:
                 outlet.push_sample(["left"])
             else:
                 outlet.push_sample(["right"])
             self.marker_sent = True
-        if elapsed_time >= self.ldtb + self.ldtm + 0.1:
+        if elapsed_time >= self.ldtb + self.ldtm + 0.1 and self.marker_not_finished:
             self.input_processed= False
-
-
+            self.marker_not_finished = False
+        if elapsed_time >= self.ldtb + self.ldtm + 0.1:
+            self.marker_finished = True
     def run(self):
         running = True
         while running:
-            self.draw_background()
+
             if self.score > 40:
                 outlet.push_sample(['STOP'])
                 running = False
@@ -203,16 +212,17 @@ class Game:
                 if event.type == pygame.QUIT:
                     running = False
             self.screen.fill(BACKGROUND_COLOR)
-            self.draw_player()
-            self.draw_apple()
+            self.draw_background()
             self.draw_scoreboard()
             self.draw_load_bar()
             self.handle_input()
             self.update_apple()
+            self.draw_player()
+            self.draw_apple()
 
             pygame.display.flip()
             self.clock.tick(FPS)
-
+            print(p)
 
 
         pygame.quit()
