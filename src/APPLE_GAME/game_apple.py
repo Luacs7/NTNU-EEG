@@ -17,9 +17,9 @@ apple_game_directory = os.path.join(script_directory, '..', 'APPLE_GAME')
 # Change the current working directory to 'src/APPLE_GAME'
 os.chdir(apple_game_directory)
 # Create a new stream for markers
-load_time_seconds_before = 2  # Time between each apple drop
-load_time_seconds_marker = 1
-load_time_seconds = 6
+load_time_seconds_before = .2  # Time between each apple drop
+load_time_seconds_marker = .1
+load_time_seconds = .6
 info = StreamInfo('markers', 'Markers', 1, 1/load_time_seconds, 'string', 'MyMarkerStream')
 outlet = StreamOutlet(info)
 
@@ -142,7 +142,7 @@ class Game:
             if self.TRAINING_MODE==2:
                 self.prob = random.choice([int(self.apple_pos[0]/(SCREEN_WIDTH // 2) + 0.5 ),random.random(),int(self.apple_pos[0]/(SCREEN_WIDTH // 2) + 0.5 )])
                 self.input_processed = True
-            else:
+            if self.TRAINING_MODE ==  False :
                 self.prob = p
         if self.prob < 0.5 and self.marker_finished:  # Open left hand
             self.hand_status["left"] = "open"
@@ -249,17 +249,17 @@ class Game:
                         pygame.quit()
                         sys.exit()
                     if mode_0_rect.collidepoint(mouse_pos):
-                        TRAINING_MODE=0
+                        self.TRAINING_MODE=False
                         mode_0 = mode_font.render('Test', True, (255,0,0))
                         mode_1 = mode_font.render('Training', True, (0,0,0))
                         mode_2 = mode_font.render('Define', True, (0,0,0))
                     if mode_1_rect.collidepoint(mouse_pos):
-                        TRAINING_MODE=1
+                        self.TRAINING_MODE = True
                         mode_0 = mode_font.render('Test', True, (0,0,0))
                         mode_1 = mode_font.render('Training', True, (255,0,0))
                         mode_2 = mode_font.render('Define', True, (0,0,0))                       
                     if mode_2_rect.collidepoint(mouse_pos):
-                        TRAINING_MODE=2
+                        self.TRAINING_MODE=2
                         mode_0 = mode_font.render('Test', True, (0,0,0))
                         mode_1 = mode_font.render('Training', True, (0,0,0))
                         mode_2 = mode_font.render('Define', True, (255,0,0))
