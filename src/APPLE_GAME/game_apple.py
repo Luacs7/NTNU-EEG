@@ -225,6 +225,22 @@ class Game:
         mode_0_rect = mode_0.get_rect(center=(SCREEN_WIDTH/4,SCREEN_HEIGHT-100))
         mode_1_rect = mode_1.get_rect(center=(SCREEN_WIDTH/2,SCREEN_HEIGHT-100))
         mode_2_rect = mode_2.get_rect(center=((SCREEN_WIDTH*3)/4,SCREEN_HEIGHT-100))
+        
+        # Variables
+        COULEUR_CHAMP_TEXTE = (200, 200, 200)
+        COULEUR_CHAINE = (255, 255, 255)
+        COULEUR_BORDURE = (0, 0, 0)
+        # Police pour le texte
+        imput_font = pygame.font.Font(None, 24)
+        chaine_texte = ''
+        actif = False
+        # Rectangle du champ de texte
+        input_rect = pygame.Rect( 275, SCREEN_HEIGHT-70, 50, 32)
+
+        end_value_txt_font = pygame.font.SysFont(None, 24)
+        end_value_txt = end_value_txt_font.render('End_Value', True, (0,0,0))
+        end_value_txt_rect = end_value_txt.get_rect(center=(((SCREEN_WIDTH*2)/4,SCREEN_HEIGHT-55)))
+
 
         while True:
             self.screen.fill(BACKGROUND_COLOR)
@@ -236,6 +252,16 @@ class Game:
             self.screen.blit(mode_0, mode_0_rect)
             self.screen.blit(mode_1, mode_1_rect)
             self.screen.blit(mode_2, mode_2_rect)
+
+            self.screen.blit(end_value_txt, end_value_txt_rect)
+
+            # Dessiner le champ de texte
+            pygame.draw.rect(self.screen, COULEUR_CHAMP_TEXTE, input_rect)
+            pygame.draw.rect(self.screen, COULEUR_BORDURE, input_rect, 2)
+            # Texte à afficher dans le champ de texte
+            txt_surface = imput_font.render(chaine_texte, True, COULEUR_CHAINE)
+            # Dessiner le texte
+            self.screen.blit(txt_surface, (input_rect.x + 5, input_rect.y + 10))
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -264,6 +290,23 @@ class Game:
                         mode_1 = mode_font.render('Training', True, (0,0,0))
                         mode_2 = mode_font.render('Define', True, (255,0,0))
 
+                    if input_rect.collidepoint(event.pos):
+                        actif = not actif
+                    else:
+                        actif = False
+
+                elif event.type == pygame.KEYDOWN:
+                    if actif:
+                        if event.key == pygame.K_RETURN:
+                            print(chaine_texte)  # Affiche la chaîne entrée dans la console
+                            self.end_value=int(chaine_texte)
+                            chaine_texte = ''
+                        elif event.key == pygame.K_BACKSPACE:
+                            chaine_texte = chaine_texte[:-1]
+                        else:
+                            if event.unicode.isdigit():  # Assure que seuls les chiffres sont entrés
+                                chaine_texte += event.unicode
+
 
             pygame.display.flip()
             pygame.time.Clock().tick(FPS)
@@ -272,7 +315,7 @@ class Game:
         running = True
         while running:
 
-            if self.score > 40:
+            if (self.score + self.failures) >= self.end_value:
                 outlet.push_sample(['STOP'])
                 running = False
             for event in pygame.event.get():
