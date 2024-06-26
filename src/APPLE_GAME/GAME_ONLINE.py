@@ -222,10 +222,9 @@ def Scores_no_feature_select(X_train, X_test, y_train, y_test ,model = RandomFor
 Brain_visu = True
 directory_path = "C:/recordings/Game_recordings_test/TOUT_4_second_apple"
 raw_fnames = find_gaming_set_files(directory_path)
-raw_fnames=[ 'C:/recordings/Game_recordings_test/TOUT_4_second_apple/GAMING_APPLE_2_noc.set' ]
+raw_fnames=[ 'C:/recordings/Game_recordings_test/TOUT_4_second_apple/mergeddata.set' ]
 training_file = raw_fnames
-def data_to_p(sample,timestamp):
-    return random.random()
+
 
 # %% Initializing game eeg live
  

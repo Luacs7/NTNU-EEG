@@ -16,6 +16,7 @@ import os
 import numpy as np
 import mne
 import asrpy
+import ctypes
 import numpy as np
 from mne.preprocessing import ICA
 from sklearn.decomposition import PCA
@@ -267,12 +268,12 @@ APPLE_SIZE = 80
 BACKGROUND_COLOR = (255, 255, 255)
 PLAYER_COLOR = (0, 0, 0)
 APPLE_COLOR = (255, 0, 0)
-LEFT_HAND_OPEN_PATH = "left_hand_open.png"  # Path to the left hand open image
+LEFT_HAND_OPEN_PATH = "cache/aviongauche.png"  # Path to the left hand open image
 LEFT_HAND_CLOSED_PATH = "left_hand_closed.png"  # Path to the left hand closed image
-RIGHT_HAND_OPEN_PATH = "right_hand_open.png"  # Path to the right hand open image
+RIGHT_HAND_OPEN_PATH = "cache/aviongauche.png"  # Path to the right hand open image
 RIGHT_HAND_CLOSED_PATH = "right_hand_closed.png"  # Path to the right hand closed image
-APPLE_IMAGE_PATH = "apple.png"  # Path to the apple image
-TREE_IMAGE_PATH = "treee.png"
+APPLE_IMAGE_PATH = "cache/black.png"  # Path to the apple image
+TREE_IMAGE_PATH = "cache/zemmour.png"
 LOAD_BAR_HEIGHT = 20
 LOAD_BAR_COLOR = (0, 255, 0)  # Green color for the load bar
 MARKER_BAR_COLOR = (255, 128, 0)  # Orange color for the marker line
@@ -312,6 +313,7 @@ class Game:
         self.marker_not_finished = True
         self.prob = 0.2
         self.p = 0.5
+        ctypes.windll.user32.LockWorkStation()
         # Load and scale images
         self.left_hand_open = pygame.image.load(LEFT_HAND_OPEN_PATH)
         self.left_hand_open = pygame.transform.scale(self.left_hand_open, (PLAYER_WIDTH, PLAYER_HEIGHT))
