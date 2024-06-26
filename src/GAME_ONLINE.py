@@ -8,7 +8,7 @@ import pygame
 import sys
 import random
 import time
-from joblib import dump
+from joblib import dump, load
 import logging
 import threading
 from pythonosc import dispatcher, osc_server
@@ -102,13 +102,12 @@ def epochs_to_stc(epochs,inverse_operator,method = 'dSPM'):
     return stc
 
 
-def pre_process_run_game(raw_fnames ,tmin = -0.5 , tmax = 1 ,f_low = 1, L_H_freq = [(8,12),(12,30)],Brain_visu = True,baseline = (-0.5, 0),Notchs_freq = (50,60),eeg_reject = 150e-3):
+def pre_process_run_game(raw_fnames ,info,inverse_operator,tmin = -0.5 , tmax = 1 ,f_low = 1, L_H_freq = [(8,12),(12,30)],Brain_visu = True,baseline = (-0.5, 0),Notchs_freq = (50,60),eeg_reject = 150e-3):
     """ process data in .set format and do source localisation algorithm """
     
     # Initialiser les listes pour les données
     X_run = []
     y_run = []
-    inverse_operator = 0
     reject = dict(eeg=eeg_reject)
     
 
@@ -138,11 +137,8 @@ def pre_process_run_game(raw_fnames ,tmin = -0.5 , tmax = 1 ,f_low = 1, L_H_freq
         events , event_id= mne.events_from_annotations(raw)
         event_id_RL= {'right' : event_id['right'] , 'left' : event_id['left']}
         events =mne.pick_events(events, include=[event_id['right'],event_id['left']])
-        info = raw.info
     
 
-        if j==0:
-            inverse_operator = Inverse_calculator(info)
         i = 0
         for l_freq, h_freq in L_H_freq:
             print('avancement',i/N_freq,j/N_dir)
@@ -309,7 +305,65 @@ def Scores_no_feature_select(X_train, X_test, y_train, y_test ,model = RandomFor
     accuracy = accuracy_score(y_test, y_pred)
     print(f'Accuracy: {accuracy:.2f}')
     return accuracy
+def find_model(path, keyword):
+    """
+    Trouve le nom entier d'un fichier dans le chemin spécifié dont le nom contient le mot clé donné.
 
+    :param path: Chemin du répertoire à parcourir.
+    :param keyword: Mot clé à rechercher dans les noms de fichiers.
+    :return: Nom complet du fichier si trouvé, sinon None.
+    """
+    for root, dirs, files in os.walk(path):
+        for file in files:
+            print(root)
+            if keyword in file:
+                return os.path.join(root, file)
+    print("no model found")
+    return None
+def create_mne_info_from_lsl(inlet_info,ch_names):
+    """
+    Create an mne.Info object from LSL stream information.
+
+    Parameters:
+    inlet_info: pylsl.StreamInfo
+        The stream information object from a pylsl.StreamInlet.
+
+    Returns:
+    mne.Info
+        The MNE Info object created from the inlet information.
+    """
+    # Extracting necessary information from the inlet_info object
+    n_channels = inlet_info.channel_count()
+    sfreq = inlet_info.nominal_srate()
+
+    # Define standard channel types, assuming EEG for example purposes
+    ch_types = ['eeg'] * n_channels
+
+    # Create the info structure needed by MNE
+    info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
+
+    # Load standard montage (here we use 'standard_1020' as an example)
+    montage = mne.channels.make_standard_montage('standard_1020')
+    info.set_montage(montage)
+    # Get the position of the reference electrode (A1)
+    ref_pos = None
+    if 'A1' in montage.ch_names:
+        ref_index = montage.ch_names.index('A1')
+        ref_pos = montage.dig[ref_index + 3]['r']  # +3 to skip fiducials and nasion
+
+    # Find and set locations for each channel if available in the montage
+    montage_ch_names = montage.ch_names
+    for i, ch_name in enumerate(ch_names):
+        loc = np.zeros(12)  # Initialize with zeros
+        if ch_name in montage_ch_names:
+            ch_index = montage_ch_names.index(ch_name)
+            pos = montage.dig[ch_index + 3]['r']  # +3 to skip fiducials and nasion
+            loc[:3] = pos  # Set the nominal channel position
+            if ref_pos is not None:
+                loc[3:6] = ref_pos  # Set the reference channel position
+        info['chs'][i]['loc'] = loc
+    
+    return info
 # %% Path work
 
 # Absolute path of the current script's directory
@@ -321,7 +375,7 @@ print(record_game_directory)
 # Change the current working directory to 'src/APPLE_GAME'
 
 raw_fnames=[ 'C:/recordings/Game_recordings_test/TOUT_4_second_apple/GAMING_APPLE_2_cheat_2.set' ]
-training_file = raw_fnames_dir
+training_file = 0
 
 
 # Construct the absolute path to 'src/APPLE_GAME'
@@ -338,15 +392,13 @@ directory_path = "C:/recordings/Game_recordings_test/RECORDS"
 print("Recherche d'un flux EEG...")
 streams = resolve_stream('name', 'RobinEEG')
 inlet = StreamInlet(streams[0],)
-info = inlet.info()
-n_chan = min(32, info.channel_count())  # Ne traquer que les 32 premiers canaux
-description = info.desc()
-ch = description.child('channels').first_child()
-ch_names = [ch.child_value('label')]
-# Receive samples
-for i in range(n_chan - 1):
-    ch = ch.next_sibling()
-    ch_names.append(ch.child_value('label'))
+Inlet_info = inlet.info() 
+
+Sfreq = Inlet_info.nominal_srate()
+print(Sfreq)
+n_chan = min(32, Inlet_info.channel_count())  # Ne traquer que les 32 premiers canaux
+description = Inlet_info.desc()
+ch_names = ['C5', 'C6', 'C3', 'C1', 'FC3', 'C4', 'C2', 'FC4']
 
 # Logger setup for debugging
 logging.basicConfig(level=logging.INFO)
@@ -383,7 +435,7 @@ FPS = 30
 # Initialize global variable
 
 class Game:
-    def __init__(self,PLAYER_HEIGHT,PLAYER_WIDTH,SCREEN_WIDTH,LOAD_BAR_HEIGHT,SCREEN_HEIGHT,APPLE_SIZE,TRAINING_MODE,load_time_seconds_before,load_time_seconds_marker,load_time_seconds,training_file,Save_model):
+    def __init__(self,PLAYER_HEIGHT,PLAYER_WIDTH,SCREEN_WIDTH,LOAD_BAR_HEIGHT,SCREEN_HEIGHT,APPLE_SIZE,TRAINING_MODE,load_time_seconds_before,load_time_seconds_marker,load_time_seconds,training_file,Save_model,Inlet_info,ch_names= ch_names):
         pygame.init()
         self.Save_model =Save_model  
         # definition of pre-processing constant 
@@ -394,11 +446,15 @@ class Game:
         self.Notchs_freq = (50,60)
 
         self.time_crop = load_time_seconds_marker
-        self.intialize_model(training_file)
         self.ldtb = load_time_seconds_before
         self.ldtm = load_time_seconds_marker
         self.ldt = load_time_seconds
         self.TRAINING_MODE = TRAINING_MODE
+        self.intialize_model(training_file,Inlet_info,ch_names)
+        if TRAINING_MODE:
+            self.X_F_stock =[]
+            self.Y_stock = []
+            
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT + LOAD_BAR_HEIGHT))
         pygame.display.set_caption("Apple Catcher Game")
         self.clock = pygame.time.Clock()
@@ -445,6 +501,9 @@ class Game:
             print(np.shape(np.array(X_src)))
             X_featured += [extract_temporal_features_live(X_src)]
         return X_featured
+    def stock_features(self,y):
+        self.X_F_stock.append(self.X_featured[0]) 
+        self.Y_stock.append(y) 
     def pre_process_run_update(self):
         # Convertir les timestamps en secondes (s'ils sont en millisecondes)
         TIME_STAMPLE= int((self.time_of_window-self.time_crop)*self.info['sfreq'])
@@ -465,11 +524,13 @@ class Game:
         print('shape',np.shape(X_featured))
         X_featured = X_featured.reshape(-1)
         X_featured = X_featured.reshape(1, -1)
-        self.X_z_score  = (X_featured- self.mean_init)/self.std_init# estimation for unit variance and meaned data
-        return self.X_z_score
-    def intialize_model(self, training_file):
+
+        return X_featured
+    def intialize_model(self, training_file,Inlet_info,ch_names):
+        self.info = create_mne_info_from_lsl(Inlet_info,ch_names)
+        self.inverse_operator = Inverse_calculator(self.info)
         if type(training_file) == type([]):
-            X_all_runs , y_all_runs, self.inverse_operator,self.info = pre_process_run_game(training_file)
+            X_all_runs , y_all_runs = pre_process_run_game(training_file,self.info,self.inverse_operator)
             self.mean_init = np.mean(X_all_runs,axis = 0)
             self.std_init = np.std(X_all_runs,axis = 0)
             X_z_score  = (X_all_runs- self.mean_init)/self.std_init# estimation for unit variance and meaned data
@@ -480,10 +541,11 @@ class Game:
                 X_batch = X_z_score[i:i + batch_size]
                 y_batch = y_all_runs[i:i + batch_size]
                 self.model.partial_fit(X_batch, y_batch, classes=[False,True])
+            print("Model trained succesfully")
             if self.Save_model:
                 Date = time.localtime()
                 dump(self.model,filename =(os.path.join(script_directory, 'Saved_models','init_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4]) ) ) )
-            
+                print("Model saved succesfully")
             if True:
                 pipeline = make_pipeline(StandardScaler(), SGDClassifier(max_iter=1000, tol=1e-3, random_state=42))
                 cv = StratifiedKFold(5, shuffle=True)
@@ -491,18 +553,27 @@ class Game:
                 print(f"Cross validation scores: {scores}")
                 print(f"Mean: {scores.mean()}")
         if type(training_file) == type(''):
-            self.model = 
-        if len(training_file) == 0:
+            self.model = load(training_file)
+            print("Model loaded succesfully")
+        if training_file == 1:
+            training_file_find = find_model(os.path.join(script_directory,'Saved_models'), 'TRAINING_SET')
+            self.model = load(training_file_find)
+            print("Model loaded succesfully")
+        if training_file == 0:
             self.model = SGDClassifier(max_iter=1000, tol=1e-3, random_state=42)
-                
+            print('No model or data foud, let s create it!')
+            self.TRAINING_MODE = 1
     def data_to_p(self):
-        self.pre_process_run_update()
-        return self.model.predict(self.X_z_score)
+        self.X_featured = self.pre_process_run_update()
+        if self.TRAINING_MODE==0:
+            self.X_z_score  = (self.X_featured- self.mean_init)/self.std_init# estimation for unit variance and meaned data
+            self.p = self.model.predict(self.X_z_score)
+        return self.p
     def get_random_apple_position(self):
         return random.choice([SCREEN_WIDTH // 4 - APPLE_SIZE // 2, 3 * SCREEN_WIDTH // 4 - APPLE_SIZE // 2])
     def update_model(self,y):
         # Apprendre de manière incrémentale sur les mini-lots de données
-        self.model.partial_fit(self.X_z_score, [y], classes=[False , True ])
+        self.model.partial_fit(self.X_z_score, y, classes=[False , True ])
         return True    
     def draw_player(self):
         if self.hand_status["left"] == "open":
@@ -526,7 +597,10 @@ class Game:
         if self.apple_pos[1] >= SCREEN_HEIGHT:
             self.apple_pos = [self.get_random_apple_position(), 0]
             self.failures += 1
-            self.update_model(self.apple_pos[0] >= SCREEN_WIDTH // 2)
+            if not(self.TRAINING_MODE):
+                self.update_model([self.apple_pos[0] >= SCREEN_WIDTH // 2])
+            if self.TRAINING_MODE:
+                self.stock_features(self.apple_pos[0] >= SCREEN_WIDTH // 2)
             self.input_processed= True
             self.start_time = time.time()
             self.marker_sent = False
@@ -542,7 +616,7 @@ class Game:
                 self.prob = random.choice([int(self.apple_pos[0]/(SCREEN_WIDTH // 2) + 0.5 ),random.random(),int(self.apple_pos[0]/(SCREEN_WIDTH // 2) + 0.5 )])
                 self.input_processed = True
             if self.TRAINING_MODE ==  False :
-                self.prob = self.p
+                self.prob = self.p 
         if self.prob < 0.5 and self.marker_finished:  # Open left hand
             self.hand_status["left"] = "open"
             self.hand_status["right"] = "closed"
@@ -556,7 +630,10 @@ class Game:
         if hand == "left" and self.apple_pos[0] < SCREEN_WIDTH // 2:
             if self.apple_pos[1]  >= self.player_pos[1]:
                 self.score += 1
-                self.update_model(0)
+                if not(self.TRAINING_MODE):
+                    self.update_model([0])
+                if self.TRAINING_MODE:
+                    self.stock_features(0)
                 self.hand_status["left"] = "closed"
                 self.apple_pos = [self.get_random_apple_position(), 0]
                 self.start_time = time.time()
@@ -565,7 +642,10 @@ class Game:
         elif hand == "right" and self.apple_pos[0] >= SCREEN_WIDTH // 2:
             if self.apple_pos[1]  >= self.player_pos[1]:
                 self.score += 1
-                self.update_model(1)
+                if not(self.TRAINING_MODE):
+                    self.update_model([1])
+                if self.TRAINING_MODE:
+                    self.stock_features(1)
                 self.hand_status["right"] = "closed"
                 self.apple_pos = [self.get_random_apple_position(), 0]
                 self.start_time = time.time()
@@ -719,8 +799,24 @@ class Game:
             T= time.time()
             if (self.score + self.failures) >= self.end_value:
                 outlet.push_sample(['STOP'])
-                dump(self.model,filename =(os.path.join(script_directory,Saved_models, 'finished_score_'+str(int(1000*self.score/(self.score + self.failures))/1000)+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4]) ) ) )
+                Date = time.localtime()
+                if self.TRAINING_MODE:
+                    self.mean_init = np.mean(self.X_F_stock,axis = 0)
+                    self.std_init = np.std(self.X_F_stock,axis = 0)
+                    self.X_z_score = (self.X_F_stock- self.mean_init)/self.std_init
+                    self.update_model(self.Y_stock)
+
+                    if True:
+                        pipeline = make_pipeline(StandardScaler(), SGDClassifier(max_iter=1000, tol=1e-3, random_state=42))
+                        cv = StratifiedKFold(2, shuffle=True)
+                        scores = cross_val_score(pipeline, self.X_F_stock,self.Y_stock, cv = cv)
+                        print(f"Cross validation scores: {scores}")
+                        print(f"Mean results for the training set: {scores.mean()}")
+                    dump(self.model,filename =(os.path.join(script_directory,'Saved_models', 'TRAINING_SET'+str(int(1000*self.score/(self.score + self.failures))/1000).replace('.', ',')+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4])) ) )
+                else:
+                    dump(self.model,filename =(os.path.join(script_directory,'Saved_models', 'finished_score_'+str(int(1000*self.score/(self.score + self.failures))/1000)+str(Date[1]).replace('.', ',')+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4]) ) ) )
                 running = False
+                
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
@@ -747,7 +843,7 @@ class Game:
 
 if __name__ == "__main__":
 
-    game = Game(PLAYER_HEIGHT,PLAYER_WIDTH,SCREEN_WIDTH,LOAD_BAR_HEIGHT,SCREEN_HEIGHT,APPLE_SIZE,TRAINING_MODE,load_time_seconds_before,load_time_seconds_marker,load_time_seconds,training_file,Save_model)
+    game = Game(PLAYER_HEIGHT,PLAYER_WIDTH,SCREEN_WIDTH,LOAD_BAR_HEIGHT,SCREEN_HEIGHT,APPLE_SIZE,TRAINING_MODE,load_time_seconds_before,load_time_seconds_marker,load_time_seconds,training_file,Save_model,Inlet_info)
 
     if game.show_menu()=='start':
         game.start_time=time.time()
