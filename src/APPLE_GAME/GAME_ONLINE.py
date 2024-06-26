@@ -28,7 +28,13 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression,SGDClassifier
 from sklearn.feature_selection import SelectFromModel
 # %% definition of processing data function 
-
+def extract_temporal_features_live(X):
+    """
+    Extact mean, std and higher order moments
+    """
+    mean = np.mean(X, axis=-1)
+    std = np.std(X, axis=-1)
+    return [mean,std]
 def extract_temporal_features(X):
     """
     Extact mean, std and higher order moments
@@ -218,10 +224,6 @@ directory_path = "C:/recordings/Game_recordings_test/TOUT_4_second_apple"
 raw_fnames = find_gaming_set_files(directory_path)
 raw_fnames=[ 'C:/recordings/Game_recordings_test/TOUT_4_second_apple/GAMING_APPLE_2_noc.set' ]
 training_file = raw_fnames
-X_all_runs , y_all_runs, inverse_operator, info = pre_process_run(raw_fnames)
-X_features = extract_temporal_features(X_all_runs)
-X,y = make_featuring(X_features, y_all_runs)
-
 def data_to_p(sample,timestamp):
     return random.random()
 
@@ -284,13 +286,14 @@ class Game:
     def __init__(self,PLAYER_HEIGHT,PLAYER_WIDTH,SCREEN_WIDTH,LOAD_BAR_HEIGHT,SCREEN_HEIGHT,APPLE_SIZE,TRAINING_MODE,load_time_seconds_before,load_time_seconds_marker,load_time_seconds,training_file):
         pygame.init()
         # definition of pre-processing constant 
-        self.time_of_window = 3.3
+        self.time_of_window = 4
         self.L_H_freq = [(8,30)]
         self.f_low = 1
+        
         self.Notchs_freq = (50,60)
 
         self.time_crop = load_time_seconds_marker
-        self.model = self.intialize_model(training_file)
+        self.intialize_model(training_file)
         self.ldtb = load_time_seconds_before
         self.ldtm = load_time_seconds_marker
         self.ldt = load_time_seconds
@@ -322,28 +325,33 @@ class Game:
         self.right_hand_closed = pygame.transform.scale(self.right_hand_closed, (PLAYER_WIDTH, PLAYER_HEIGHT))
         self.apple_image = pygame.image.load(APPLE_IMAGE_PATH)
         self.apple_image = pygame.transform.scale(self.apple_image, (APPLE_SIZE, APPLE_SIZE))
-
         self.hand_status = {"left": "closed", "right": "closed"}
-    def CREATE_EPOCHS(self,events):
+
+
+
+    def CREATE_EPOCHS(self,raw):
         # Assurez-vous que les timestamps et samples ont des formes compatibles
         X_featured = []
         for l_freq, h_freq in self.L_H_freq:
             raw2 = raw.copy()
             raw2.filter(l_freq, h_freq) 
             # Définir les périodes d'intérêt pour couvrir tout le timestamp
-            tmin, tmax = 0, self.time_crop # en secondes
+            tmin, tmax = -0.5, self.time_crop # en secondes
             # Créer des epochs
-            epochs = mne.epochs(raw2, events, event_id=1, tmin=tmin, tmax=tmax, baseline=(-0.5,0), preload=True)
-            src = epochs_to_stc(epochs,inverse_operator,method = 'dSPM')
-            X_src = src_data_to_X_data(src)
-            X_featured += [extract_temporal_features(X_src)]
-        return[X_featured]
+            epochs_ = mne.Epochs(raw2, self.events,  tmin=tmin, tmax=tmax,baseline=(-0.5,0), preload=True)#
+            src = epochs_to_stc(epochs_,self.inverse_operator,method = 'dSPM')
+            X_src = src[0].data
+            print(np.shape(np.array(X_src)))
+            X_featured += [extract_temporal_features_live(X_src)]
+        return X_featured
     def pre_process_run_update(self):
-        assert self.sample.shape[1] == len(self.timestamp), "Mismatch between samples and timestamps"
         # Convertir les timestamps en secondes (s'ils sont en millisecondes)
-        self.events = np.array([[self.timestamp[-1] - self.timestamp[0] - self.time_crop , 0, 1]])  # Un seul événement couvrant tout l'epoch A CHANGER POUR RIGHT ET LEFT
+        TIME_STAMPLE= int((self.time_of_window-self.time_crop)*self.info['sfreq'])
+        print('TIME_STAMPLE',TIME_STAMPLE)
+        self.events = np.array([[TIME_STAMPLE, 0, 1]])  # Un seul événement couvrant tout l'epoch A CHANGER POUR RIGHT ET LEFT
+        
         # Créer un RawArray
-        raw = mne.io.RawArray(self.sample, self.info)
+        raw = mne.io.RawArray(np.moveaxis(self.sample,1,0), self.info)
         raw.filter( self.f_low, None)
         raw.notch_filter(self.Notchs_freq)
         montage = mne.channels.make_standard_montage('standard_1020')
@@ -351,9 +359,9 @@ class Game:
         raw.set_montage(montage)
         raw.set_eeg_reference('average', projection=True)
 
-        epochs = CREATE_EPOCHS(self)
+        X_featured = self.CREATE_EPOCHS(raw)
         
-        return X_src
+        return X_featured
     def intialize_model(self, training_file):
         X_all_runs , y_all_runs, self.inverse_operator,self.info = pre_process_run(training_file)
         X_features = extract_temporal_features(X_all_runs)
@@ -363,20 +371,22 @@ class Game:
         batch_size = 10
         for i in range(0, len(X), batch_size):
             X_batch = X[i:i + batch_size]
-            print(np.shape(X_btach))
+            print(np.shape(X_batch))
             y_batch = y[i:i + batch_size]
-            self.model.partial_fit(X_batch, y_batch, classes=np.unique(y))
+            self.model.partial_fit(X_batch, y_batch, classes=[False , True ])
             
 
     def get_random_apple_position(self):
         return random.choice([SCREEN_WIDTH // 4 - APPLE_SIZE // 2, 3 * SCREEN_WIDTH // 4 - APPLE_SIZE // 2])
-    def update_model(self):
+    def update_model(self,y):
         # Apprendre de manière incrémentale sur les mini-lots de données
-        X_train = pre_process_run_update(self.timestamp,self.sample,self.inverse_operator,self.info)
-        X_train = extract_temporal_features(X_train)
+        X_train = self.pre_process_run_update()
+        X_train = np.array(X_train)
+        print('shape',np.shape(X_train))
         X_train = X_train.reshape(-1)
-        y = 1
-        self.model.partial_fit(X_train, y, classes=np.unique(y))
+        X_train = X_train.reshape(1, -1)
+        self.model.partial_fit(X_train, [y], classes=[False , True ])
+        return True    
     def draw_player(self):
         if self.hand_status["left"] == "open":
             self.screen.blit(self.left_hand_open, (self.player_pos[0] - PLAYER_WIDTH, self.player_pos[1]))
@@ -427,7 +437,6 @@ class Game:
 
     def check_catch(self, hand):
         if hand == "left" and self.apple_pos[0] < SCREEN_WIDTH // 2:
-            print(self.apple_pos[1] + APPLE_SIZE- self.player_pos[1])
             if self.apple_pos[1]  >= self.player_pos[1]:
                 self.score += 1
                 self.update_model(0)
@@ -609,7 +618,7 @@ class Game:
             self.draw_apple()
         
             pygame.display.flip()
-            print(self.p)
+
             t = time.time()
             while t-T < 1/FPS:
                 t = time.time()
