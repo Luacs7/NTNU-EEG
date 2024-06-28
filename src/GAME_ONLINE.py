@@ -8,12 +8,14 @@ import pygame
 import sys
 import random
 import time
+import pickle
 from joblib import dump, load
 import logging
 import threading
 from pythonosc import dispatcher, osc_server
 from pylsl import StreamInfo, StreamOutlet
 import os
+import stat
 import numpy as np
 import mne
 import asrpy
@@ -32,14 +34,14 @@ from sklearn.feature_selection import SelectFromModel
 # %% definition of processing data function 
 def extract_temporal_features_live(X):
     """
-    Extact mean, std and higher order moments
+    Extact mean, std of epochs from one raw data
     """
     mean = np.mean(X, axis=-1)
     std = np.std(X, axis=-1)
     return [mean,std]
 def extract_temporal_features(X):
     """
-    Extact mean, std and higher order moments
+    Extact mean, std of epochs from a list of raw data 
     """
     features = []
     for epoch in X:
@@ -375,6 +377,9 @@ print(record_game_directory)
 # Change the current working directory to 'src/APPLE_GAME'
 
 raw_fnames=[ 'C:/recordings/Game_recordings_test/TOUT_4_second_apple/GAMING_APPLE_2_cheat_2.set' ]
+training_file =  ['C:/Users/robinaki/Documents/NTNU-EEG/src/Data_games/TRAINING_data_1,0_6_27_14']
+
+training_file = ['C:/Users/robinaki/Documents/NTNU-EEG/src/Data_games/TRAINING_data_0,0_6_27_16']
 training_file = 0
 
 
@@ -444,27 +449,25 @@ class Game:
         self.f_low = 1
         
         self.Notchs_freq = (50,60)
-
+        self.TABLE_score = []
         self.time_crop = load_time_seconds_marker
         self.ldtb = load_time_seconds_before
         self.ldtm = load_time_seconds_marker
         self.ldt = load_time_seconds
         self.TRAINING_MODE = TRAINING_MODE
-        self.intialize_model(training_file,Inlet_info,ch_names)
+        self.initialize_model(training_file,Inlet_info,ch_names)
         if TRAINING_MODE:
             self.X_F_stock =[]
             self.Y_stock = []
-            
+        self.score = 0
+        self.failures = 0
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT + LOAD_BAR_HEIGHT))
         pygame.display.set_caption("Apple Catcher Game")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont(None, 36)
         self.marker_sent = False
         self.player_pos = [SCREEN_WIDTH // 2, SCREEN_HEIGHT - PLAYER_HEIGHT]
-        self.apple_pos = [self.get_random_apple_position(), 0]
         self.apple_speed = (SCREEN_HEIGHT -APPLE_SIZE/2  )/ (load_time_seconds * FPS)
-        self.score = 0
-        self.failures = 0
         self.start_time = time.time()
         self.input_processed= True
         self.tree_image = pygame.image.load(TREE_IMAGE_PATH)
@@ -526,39 +529,52 @@ class Game:
         X_featured = X_featured.reshape(1, -1)
 
         return X_featured
-    def intialize_model(self, training_file,Inlet_info,ch_names):
+    def initialize_model(self, training_file,Inlet_info,ch_names):
         self.info = create_mne_info_from_lsl(Inlet_info,ch_names)
         self.inverse_operator = Inverse_calculator(self.info)
         if type(training_file) == type([]):
-            X_all_runs , y_all_runs = pre_process_run_game(training_file,self.info,self.inverse_operator)
-            self.mean_init = np.mean(X_all_runs,axis = 0)
-            self.std_init = np.std(X_all_runs,axis = 0)
-            X_z_score  = (X_all_runs- self.mean_init)/self.std_init# estimation for unit variance and meaned data
-            self.model = SGDClassifier(max_iter=1000, tol=1e-3, random_state=42)
-            # Apprendre de manière incrémentale sur les mini-lots de données
-            batch_size = 10
-            for i in range(0, len(X_z_score), batch_size):
-                X_batch = X_z_score[i:i + batch_size]
-                y_batch = y_all_runs[i:i + batch_size]
-                self.model.partial_fit(X_batch, y_batch, classes=[False,True])
-            print("Model trained succesfully")
-            if self.Save_model:
-                Date = time.localtime()
-                dump(self.model,filename =(os.path.join(script_directory, 'Saved_models','init_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4]) ) ) )
-                print("Model saved succesfully")
-            if True:
-                pipeline = make_pipeline(StandardScaler(), SGDClassifier(max_iter=1000, tol=1e-3, random_state=42))
-                cv = StratifiedKFold(5, shuffle=True)
-                scores = cross_val_score(pipeline, X_all_runs,y_all_runs, cv = cv)
-                print(f"Cross validation scores: {scores}")
-                print(f"Mean: {scores.mean()}")
+            if '.set' in training_file[0]:# We verify if training file is a .set files
+                X_all_runs , y_all_runs = pre_process_run_game(training_file,self.info,self.inverse_operator)
+                self.mean_init = np.mean(X_all_runs,axis = 0)
+                self.std_init = np.std(X_all_runs,axis = 0)
+                X_z_score  = (X_all_runs- self.mean_init)/self.std_init# estimation for unit variance and meaned data
+                self.model = SGDClassifier(max_iter=1000, tol=1e-3, random_state=42)
+                # Apprendre de manière incrémentale sur les mini-lots de données
+                batch_size = 10
+                for i in range(0, len(X_z_score), batch_size):
+                    X_batch = X_z_score[i:i + batch_size]
+                    y_batch = y_all_runs[i:i + batch_size]
+                    self.model.partial_fit(X_batch, y_batch, classes=[False,True])
+                print("Model trained succesfully")
+                if self.Save_model:
+                    Date = time.localtime()
+                    dump(self.model,filename =(os.path.join(script_directory, 'Saved_models','init_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4]) ) ) )
+                    print("Model saved succesfully")
+                if True:
+                    pipeline = make_pipeline(StandardScaler(), SGDClassifier(max_iter=1000, tol=1e-3, random_state=42))
+                    cv = StratifiedKFold(5, shuffle=True)
+                    scores = cross_val_score(pipeline, X_all_runs,y_all_runs, cv = cv)
+                    print(f"Cross validation scores: {scores}")
+                    print(f"Mean: {scores.mean()}")
+            if 'Data_games' in training_file[0]:
+                self.model = SGDClassifier(max_iter=1000, tol=1e-3, random_state=42)
+                for training_set in training_file:
+                    [X_z_score , y_all_runs, Table_score] = [None , None , None]
+                    with open(training_set, 'rb') as file:
+                        # Deserialize and retrieve the variable from the file
+                        [X_z_score , y_all_runs, Table_score] = pickle.load(file)
+                    self.model.partial_fit(X_z_score, y_all_runs, classes=[False,True])
+                print("Model trained succesfully")
         if type(training_file) == type(''):
             self.model = load(training_file)
             print("Model loaded succesfully")
         if training_file == 1:
             training_file_find = find_model(os.path.join(script_directory,'Saved_models'), 'TRAINING_SET')
-            self.model = load(training_file_find)
-            print("Model loaded succesfully")
+            if training_file_find==None:
+                training_file = 0
+            else:
+                self.model = load(training_file_find)
+                print("Model loaded succesfully")
         if training_file == 0:
             self.model = SGDClassifier(max_iter=1000, tol=1e-3, random_state=42)
             print('No model or data foud, let s create it!')
@@ -570,7 +586,9 @@ class Game:
             self.p = self.model.predict(self.X_z_score)
         return self.p
     def get_random_apple_position(self):
-        return random.choice([SCREEN_WIDTH // 4 - APPLE_SIZE // 2, 3 * SCREEN_WIDTH // 4 - APPLE_SIZE // 2])
+        Choice_apple = self.APPLE_ORDER[self.score+self.failures]
+        falling_pos = [SCREEN_WIDTH // 4 - APPLE_SIZE // 2, 3 * SCREEN_WIDTH // 4 - APPLE_SIZE // 2]
+        return falling_pos[Choice_apple]
     def update_model(self,y):
         # Apprendre de manière incrémentale sur les mini-lots de données
         self.model.partial_fit(self.X_z_score, y, classes=[False , True ])
@@ -597,10 +615,11 @@ class Game:
         if self.apple_pos[1] >= SCREEN_HEIGHT:
             self.apple_pos = [self.get_random_apple_position(), 0]
             self.failures += 1
+            self.TABLE_score += [self.score/(self.score + self.failures)]
             if not(self.TRAINING_MODE):
                 self.update_model([self.apple_pos[0] >= SCREEN_WIDTH // 2])
-            if self.TRAINING_MODE:
-                self.stock_features(self.apple_pos[0] >= SCREEN_WIDTH // 2)
+            
+            self.stock_features(self.apple_pos[0] >= SCREEN_WIDTH // 2)
             self.input_processed= True
             self.start_time = time.time()
             self.marker_sent = False
@@ -630,10 +649,10 @@ class Game:
         if hand == "left" and self.apple_pos[0] < SCREEN_WIDTH // 2:
             if self.apple_pos[1]  >= self.player_pos[1]:
                 self.score += 1
+                self.TABLE_score += [self.score/(self.score + self.failures)]
                 if not(self.TRAINING_MODE):
                     self.update_model([0])
-                if self.TRAINING_MODE:
-                    self.stock_features(0)
+                self.stock_features(0)
                 self.hand_status["left"] = "closed"
                 self.apple_pos = [self.get_random_apple_position(), 0]
                 self.start_time = time.time()
@@ -642,10 +661,11 @@ class Game:
         elif hand == "right" and self.apple_pos[0] >= SCREEN_WIDTH // 2:
             if self.apple_pos[1]  >= self.player_pos[1]:
                 self.score += 1
+                self.TABLE_score += [self.score/(self.score + self.failures)]
                 if not(self.TRAINING_MODE):
                     self.update_model([1])
-                if self.TRAINING_MODE:
-                    self.stock_features(1)
+
+                self.stock_features(1)
                 self.hand_status["right"] = "closed"
                 self.apple_pos = [self.get_random_apple_position(), 0]
                 self.start_time = time.time()
@@ -723,7 +743,6 @@ class Game:
         end_value_txt = end_value_txt_font.render('End_Value', True, (0,0,0))
         end_value_txt_rect = end_value_txt.get_rect(center=(((SCREEN_WIDTH*2)/4,SCREEN_HEIGHT-55)))
 
-
         while True:
             self.screen.fill(BACKGROUND_COLOR)
             self.draw_background()
@@ -795,6 +814,10 @@ class Game:
 
     def run(self):
         running = True
+        self.APPLE_ORDER = [i%2 for i in range(self.end_value)]
+        random.shuffle(self.APPLE_ORDER) 
+        self.APPLE_ORDER.append(-1) 
+        self.apple_pos = [self.get_random_apple_position(), 0]
         while running:
             T= time.time()
             if (self.score + self.failures) >= self.end_value:
@@ -805,16 +828,28 @@ class Game:
                     self.std_init = np.std(self.X_F_stock,axis = 0)
                     self.X_z_score = (self.X_F_stock- self.mean_init)/self.std_init
                     self.update_model(self.Y_stock)
-
-                    if True:
+                    Score =0
+                    if False:
                         pipeline = make_pipeline(StandardScaler(), SGDClassifier(max_iter=1000, tol=1e-3, random_state=42))
-                        cv = StratifiedKFold(2, shuffle=True)
+                        cv = StratifiedKFold(5, shuffle=True)
                         scores = cross_val_score(pipeline, self.X_F_stock,self.Y_stock, cv = cv)
                         print(f"Cross validation scores: {scores}")
                         print(f"Mean results for the training set: {scores.mean()}")
-                    dump(self.model,filename =(os.path.join(script_directory,'Saved_models', 'TRAINING_SET'+str(int(1000*self.score/(self.score + self.failures))/1000).replace('.', ',')+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4])) ) )
+                        Score = scores.mean()
+
+                    file_path_data = (os.path.join(script_directory,'Data_games', 'TRAINING_data'+'_'+str(int(1000*Score)/1000).replace('.', '_')+'_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4])) )
+                    file_path_model =(os.path.join(script_directory,'Saved_models', 'TRAINING_SET'+str(int(1000*Score)/1000).replace('.', '_')+'_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4])) ) 
+
                 else:
-                    dump(self.model,filename =(os.path.join(script_directory,'Saved_models', 'finished_score_'+str(int(1000*self.score/(self.score + self.failures))/1000)+str(Date[1]).replace('.', ',')+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4]) ) ) )
+                    score_rounded =int(1000*self.score/(self.score + self.failures))/1000
+                    file_path_data = (os.path.join(script_directory,'Data_games', 'Testing_data'+str(score_rounded).replace('.', '_')+'_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4])) )
+                    file_path_model  = (os.path.join(script_directory,'Saved_models', 'finished_score_'+str(score_rounded)+str(Date[1]).replace('.', '_')+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4]) ) ) 
+
+                # FILE_TO_SAVE=[file_path_data,file_path_model]
+                np.savez(file_path_data,np.array(self.X_F_stock.copy()),np.array(self.Y_stock.copy()),np.array(self.TABLE_score.copy()))
+                
+                with open(file_path_model, 'x') as file:
+                    dump(self.model, filename = file_path_model)
                 running = False
                 
             for event in pygame.event.get():
@@ -837,14 +872,16 @@ class Game:
 
 
         pygame.quit()
-        sys.exit()
+        return None
+
 
 
 
 if __name__ == "__main__":
-
+    print(training_file)
     game = Game(PLAYER_HEIGHT,PLAYER_WIDTH,SCREEN_WIDTH,LOAD_BAR_HEIGHT,SCREEN_HEIGHT,APPLE_SIZE,TRAINING_MODE,load_time_seconds_before,load_time_seconds_marker,load_time_seconds,training_file,Save_model,Inlet_info)
 
     if game.show_menu()=='start':
         game.start_time=time.time()
         game.run()
+print('done')
