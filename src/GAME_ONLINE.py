@@ -315,13 +315,13 @@ def find_model(path, keyword):
     :param keyword: Mot clé à rechercher dans les noms de fichiers.
     :return: Nom complet du fichier si trouvé, sinon None.
     """
+    PATHS=[]
     for root, dirs, files in os.walk(path):
         for file in files:
             print(root)
             if keyword in file:
-                return os.path.join(root, file)
-    print("no model found")
-    return None
+                PATHS +=[ os.path.join(root, file)]
+    return PATHS
 def create_mne_info_from_lsl(inlet_info,ch_names):
     """
     Create an mne.Info object from LSL stream information.
@@ -380,7 +380,7 @@ raw_fnames=[ 'C:/recordings/Game_recordings_test/TOUT_4_second_apple/GAMING_APPL
 training_file =  ['C:/Users/robinaki/Documents/NTNU-EEG/src/Data_games/TRAINING_data_1,0_6_27_14']
 
 training_file = ['C:/Users/robinaki/Documents/NTNU-EEG/src/Data_games/TRAINING_data_0,0_6_27_16']
-training_file = 0
+training_file = 1
 
 
 # Construct the absolute path to 'src/APPLE_GAME'
@@ -557,23 +557,18 @@ class Game:
                     print(f"Cross validation scores: {scores}")
                     print(f"Mean: {scores.mean()}")
             if 'Data_games' in training_file[0]:
-                self.model = SGDClassifier(max_iter=1000, tol=1e-3, random_state=42)
-                for training_set in training_file:
-                    [X_z_score , y_all_runs, Table_score] = [None , None , None]
-                    with open(training_set, 'rb') as file:
-                        # Deserialize and retrieve the variable from the file
-                        [X_z_score , y_all_runs, Table_score] = pickle.load(file)
-                    self.model.partial_fit(X_z_score, y_all_runs, classes=[False,True])
-                print("Model trained succesfully")
+                self.Create_model_from_files(training_file)
         if type(training_file) == type(''):
             self.model = load(training_file)
             print("Model loaded succesfully")
         if training_file == 1:
-            training_file_find = find_model(os.path.join(script_directory,'Saved_models'), 'TRAINING_SET')
-            if training_file_find==None:
+            training_file_find = find_model(os.path.join(script_directory,'Data_games'), 'TRAINING_data')
+
+            if len(training_file_find)==0:
                 training_file = 0
             else:
-                self.model = load(training_file_find)
+                print(training_file_find)
+                self.Create_model_from_files(training_file_find)
                 print("Model loaded succesfully")
         if training_file == 0:
             self.model = SGDClassifier(max_iter=1000, tol=1e-3, random_state=42)
@@ -675,6 +670,30 @@ class Game:
         failures_text = self.font.render(f'Failures: {self.failures}', True, (255, 0, 0))
         self.screen.blit(score_text, (10, 10))
         self.screen.blit(failures_text, (10, 50))
+
+    def Create_model_from_files(self,training_file,batch_size = 0):
+        self.model = SGDClassifier(max_iter=1000, tol=1e-3, random_state=42)
+        for j in range(len(training_file)):
+            training_set = training_file[j]
+            [X_z_score , y_all_runs, Table_score] = [None , None , None]
+            with open(training_set, 'rb') as file:
+                # Deserialize and retrieve the variable from the file
+                [X_run , y_run, Table_score] = pickle.load(file)
+            if j==0:
+                X_all_run = X_run
+                y_all_runs = y_run
+            else: 
+                X_all_run = np.concatenate([X_all_run,X_run],axis= 0)
+                y_all_runs +=y_run
+        self.mean_init = np.mean(X_all_run,axis = 0)
+        self.std_init = np.std(X_all_run,axis = 0)
+        X_z_score  = (X_all_run- self.mean_init)/self.std_init# estimation for unit variance and meaned data
+        for i in range(0, len(X_z_score), batch_size):
+            X_batch = X_z_score[i:i + batch_size]
+            y_batch = y_all_runs[i:i + batch_size]
+            self.model.partial_fit(X_batch, y_batch, classes=[False,True])
+        print("Model trained succesfully")
+        return None
 
     def draw_load_bar(self):
         elapsed_time = time.time() - self.start_time
@@ -837,19 +856,21 @@ class Game:
                         print(f"Mean results for the training set: {scores.mean()}")
                         Score = scores.mean()
 
-                    file_path_data = (os.path.join(script_directory,'Data_games', 'TRAINING_data'+'_'+str(int(1000*Score)/1000).replace('.', '_')+'_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4])) )
-                    file_path_model =(os.path.join(script_directory,'Saved_models', 'TRAINING_SET'+str(int(1000*Score)/1000).replace('.', '_')+'_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4])) ) 
+                    file_path_data = (os.path.join(script_directory,'Data_games', 'TRAINING_data'+'_'+str(int(1000*Score)/1000).replace('.', '_')+'_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+'_'+str(Date[4])) )
+                    file_path_model =(os.path.join(script_directory,'Saved_models', 'TRAINING_SET'+str(int(1000*Score)/1000).replace('.', '_')+'_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+'_'+str(Date[4])) ) 
 
                 else:
                     score_rounded =int(1000*self.score/(self.score + self.failures))/1000
-                    file_path_data = (os.path.join(script_directory,'Data_games', 'Testing_data'+str(score_rounded).replace('.', '_')+'_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4])) )
-                    file_path_model  = (os.path.join(script_directory,'Saved_models', 'finished_score_'+str(score_rounded)+str(Date[1]).replace('.', '_')+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4]) ) ) 
-
+                    Name_score = str(score_rounded).replace('.', '_')+'_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+'_'+str(Date[4])
+                    file_path_data = (os.path.join(script_directory,'Data_games', 'Testing_data') )
+                    file_path_model  = (os.path.join(script_directory,'Saved_models', 'finished_score_'+str(score_rounded)+str(Date[1]).replace('.', '_')+'_'+str(Date[2])+'_'+str(Date[3])+'_'+str(Date[4]) ) ) 
+                    
                 # FILE_TO_SAVE=[file_path_data,file_path_model]
-                np.savez(file_path_data,np.array(self.X_F_stock.copy()),np.array(self.Y_stock.copy()),np.array(self.TABLE_score.copy()))
-                
-                with open(file_path_model, 'x') as file:
-                    dump(self.model, filename = file_path_model)
+
+                with open(file_path_data, 'wb') as file:
+                    pickle.dump([ np.array(self.X_F_stock.copy()),np.array(self.Y_stock.copy()), np.array(self.TABLE_score.copy())]  ,file)
+                with open(file_path_model, 'wb') as file:
+                    pickle.dump(self.model, file)
                 running = False
                 
             for event in pygame.event.get():
