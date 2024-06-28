@@ -20,6 +20,7 @@ import numpy as np
 import mne
 import asrpy
 import gc
+import ctypes
 import numpy as np
 from mne.preprocessing import ICA
 from sklearn.decomposition import PCA
@@ -466,6 +467,7 @@ class Game:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont(None, 36)
         self.marker_sent = False
+        ctypes.windll.user32.LockWorkStation()
         self.player_pos = [SCREEN_WIDTH // 2, SCREEN_HEIGHT - PLAYER_HEIGHT]
         self.apple_speed = (SCREEN_HEIGHT -APPLE_SIZE/2  )/ (load_time_seconds * FPS)
         self.start_time = time.time()
