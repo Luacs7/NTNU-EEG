@@ -346,7 +346,10 @@ def create_mne_info_from_lsl(inlet_info,ch_names):
     info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
 
     # Load standard montage (here we use 'standard_1020' as an example)
-    montage = mne.channels.make_standard_montage('standard_1020')
+    if n_channels==8:
+        montage = mne.channels.make_standard_montage('standard_1020')
+    else:
+        montage = mne.channels.make_standard_montage('standard_1020')
     info.set_montage(montage)
     # Get the position of the reference electrode (A1)
     ref_pos = None
@@ -377,10 +380,10 @@ raw_fnames_dir = find_gaming_set_files(record_game_directory)
 print(record_game_directory)
 # Change the current working directory to 'src/APPLE_GAME'
 
-raw_fnames=[ 'C:/recordings/Game_recordings_test/TOUT_4_second_apple/GAMING_APPLE_2_cheat_2.set' ]
-training_file =  ['C:/Users/robinaki/Documents/NTNU-EEG/src/Data_games/TRAINING_data_1,0_6_27_14']
+# raw_fnames=[ 'C:/recordings/Game_recordings_test/TOUT_4_second_apple/GAMING_APPLE_2_cheat_2.set' ]
+# training_file =  ['C:/Users/robinaki/Documents/NTNU-EEG/src/Data_games/TRAINING_data_1,0_6_27_14']
 
-training_file = ['C:/Users/robinaki/Documents/NTNU-EEG/src/Data_games/TRAINING_data_0,0_6_27_16']
+# training_file = ['C:/Users/robinaki/Documents/NTNU-EEG/src/Data_games/TRAINING_data_0,0_6_27_16']
 training_file = 1
 
 
@@ -404,7 +407,10 @@ Sfreq = Inlet_info.nominal_srate()
 print(Sfreq)
 n_chan = min(32, Inlet_info.channel_count())  # Ne traquer que les 32 premiers canaux
 description = Inlet_info.desc()
-ch_names = ['C5', 'C6', 'C3', 'C1', 'FC3', 'C4', 'C2', 'FC4']
+if n_chan==8:
+    ch_names = ['C5', 'C6', 'C3', 'C1', 'FC3', 'C4', 'C2', 'FC4']
+else:
+    ch_names = ['FC2','FC4','FC6','FCz','C6','C4','C2','TP8', 'CP2','CP4','FT7','FT8','FC5','C5','FC1','C3','Cz', 'C1','CP1', 'CPz', 'CP3','CP5', 'F8', 'AF4','F4', 'AFz', 'AF3', 'F7', 'F3', 'FC3', 'CP6', 'TP7', 'stim'] ########## To modify ########## To modify
 
 # Logger setup for debugging
 logging.basicConfig(level=logging.INFO)
@@ -673,7 +679,7 @@ class Game:
         self.screen.blit(score_text, (10, 10))
         self.screen.blit(failures_text, (10, 50))
 
-    def Create_model_from_files(self,training_file,batch_size = 0):
+    def Create_model_from_files(self,training_file,batch_size = 1):
         self.model = SGDClassifier(max_iter=1000, tol=1e-3, random_state=42)
         for j in range(len(training_file)):
             training_set = training_file[j]
@@ -907,4 +913,4 @@ if __name__ == "__main__":
     if game.show_menu()=='start':
         game.start_time=time.time()
         game.run()
-print('done')
+        print('done')
