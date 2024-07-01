@@ -356,7 +356,7 @@ def create_mne_info_from_lsl(inlet_info,ch_names):
     if 'A1' in montage.ch_names:
         ref_index = montage.ch_names.index('A1')
         ref_pos = montage.dig[ref_index + 3]['r']  # +3 to skip fiducials and nasion
-
+    print(info['chs'][9]['loc'])
     # Find and set locations for each channel if available in the montage
     montage_ch_names = montage.ch_names
     for i, ch_name in enumerate(ch_names):
@@ -368,7 +368,10 @@ def create_mne_info_from_lsl(inlet_info,ch_names):
             if ref_pos is not None:
                 loc[3:6] = ref_pos  # Set the reference channel position
         info['chs'][i]['loc'] = loc
-    
+    montage.plot()  # 2D
+    fig = montage.plot(kind="3d", show=False)  # 3D
+    fig = fig.gca().view_init(azim=70, elev=15)  # set view angle for tutorial
+    plt.show()
     return info
 # %% Path work
 
@@ -384,7 +387,7 @@ print(record_game_directory)
 # training_file =  ['C:/Users/robinaki/Documents/NTNU-EEG/src/Data_games/TRAINING_data_1,0_6_27_14']
 
 # training_file = ['C:/Users/robinaki/Documents/NTNU-EEG/src/Data_games/TRAINING_data_0,0_6_27_16']
-training_file = 1
+training_file = 0
 
 
 # Construct the absolute path to 'src/APPLE_GAME'
@@ -417,9 +420,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Create a new stream for markers
-load_time_seconds_before = 2  # Time between each apple drop
+load_time_seconds_before = 1  # Time between each apple drop
 load_time_seconds_marker = 1
-load_time_seconds = 6
+load_time_seconds = 3
 info = StreamInfo('markers', 'Markers', 1, 1/load_time_seconds, 'string', 'MyMarkerStream')
 outlet = StreamOutlet(info)
 sample,timestamp = inlet.pull_chunk(timeout=1.0)
@@ -856,7 +859,7 @@ class Game:
                     self.X_z_score = (self.X_F_stock- self.mean_init)/self.std_init
                     self.update_model(self.Y_stock)
                     Score =0
-                    if False:
+                    if True:
                         pipeline = make_pipeline(StandardScaler(), SGDClassifier(max_iter=1000, tol=1e-3, random_state=42))
                         cv = StratifiedKFold(5, shuffle=True)
                         scores = cross_val_score(pipeline, self.X_F_stock,self.Y_stock, cv = cv)
@@ -868,13 +871,14 @@ class Game:
                     file_path_model =(os.path.join(script_directory,'Saved_models', 'TRAINING_SET'+str(int(1000*Score)/1000).replace('.', '_')+'_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+'_'+str(Date[4])) ) 
 
                 else:
+                    
                     score_rounded =int(1000*self.score/(self.score + self.failures))/1000
                     Name_score = str(score_rounded).replace('.', '_')+'_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+'_'+str(Date[4])
-                    file_path_data = (os.path.join(script_directory,'Data_games', 'Testing_data') )
+                    file_path_data = (os.path.join(script_directory,'Data_games', 'Testing_data'+'_'+str(score_rounded).replace('.', '_')+'_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+'_'+str(Date[4])) )
                     file_path_model  = (os.path.join(script_directory,'Saved_models', 'finished_score_'+str(score_rounded)+str(Date[1]).replace('.', '_')+'_'+str(Date[2])+'_'+str(Date[3])+'_'+str(Date[4]) ) ) 
                     
                 # FILE_TO_SAVE=[file_path_data,file_path_model]
-
+                
                 with open(file_path_data, 'wb') as file:
                     pickle.dump([ np.array(self.X_F_stock.copy()),np.array(self.Y_stock.copy()), np.array(self.TABLE_score.copy())]  ,file)
                 with open(file_path_model, 'wb') as file:
