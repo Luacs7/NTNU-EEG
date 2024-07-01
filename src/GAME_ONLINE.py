@@ -20,6 +20,7 @@ import numpy as np
 import mne
 import asrpy
 import gc
+import ctypes
 import numpy as np
 from mne.preprocessing import ICA
 from sklearn.decomposition import PCA
@@ -345,15 +346,17 @@ def create_mne_info_from_lsl(inlet_info,ch_names):
     info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
 
     # Load standard montage (here we use 'standard_1020' as an example)
-
-    montage = mne.channels.make_standard_montage('standard_1020')
-
+    if n_channels==8:
+        montage = mne.channels.make_standard_montage('standard_1020')
+    else:
+        montage = mne.channels.make_standard_montage('standard_1020')
     info.set_montage(montage)
     # Get the position of the reference electrode (A1)
     ref_pos = None
     if 'A1' in montage.ch_names:
         ref_index = montage.ch_names.index('A1')
         ref_pos = montage.dig[ref_index + 3]['r']  # +3 to skip fiducials and nasion
+    print(info['chs'][9]['loc'])
     # Find and set locations for each channel if available in the montage
     montage_ch_names = montage.ch_names
     for i, ch_name in enumerate(ch_names):
@@ -384,7 +387,7 @@ print(record_game_directory)
 # training_file =  ['C:/Users/robinaki/Documents/NTNU-EEG/src/Data_games/TRAINING_data_1,0_6_27_14']
 
 # training_file = ['C:/Users/robinaki/Documents/NTNU-EEG/src/Data_games/TRAINING_data_0,0_6_27_16']
-training_file = 1
+training_file = 0
 
 
 # Construct the absolute path to 'src/APPLE_GAME'
@@ -407,19 +410,19 @@ Sfreq = Inlet_info.nominal_srate()
 print(Sfreq)
 n_chan = min(32, Inlet_info.channel_count())  # Ne traquer que les 32 premiers canaux
 description = Inlet_info.desc()
-
-ch_names = ['C5', 'C6', 'C3', 'C1', 'FC3', 'C4', 'C2', 'FC4']
-# else:
-    # ch_names = ['FC2','FC4','FC6','FCz','C6','C4','C2','TP8', 'CP2','CP4','FT7','FT8','FC5','C5','FC1','C3','Cz', 'C1','CP1', 'CPz', 'CP3','CP5', 'F8', 'AF4','F4', 'AFz', 'AF3', 'F7', 'F3', 'FC3', 'CP6', 'TP7', 'stim'] ########## To modify ########## To modify
+if n_chan==8:
+    ch_names = ['C5', 'C6', 'C3', 'C1', 'FC3', 'C4', 'C2', 'FC4']
+else:
+    ch_names = ['FC2','FC4','FC6','FCz','C6','C4','C2','TP8', 'CP2','CP4','FT7','FT8','FC5','C5','FC1','C3','Cz', 'C1','CP1', 'CPz', 'CP3','CP5', 'F8', 'AF4','F4', 'AFz', 'AF3', 'F7', 'F3', 'FC3', 'CP6', 'TP7', 'stim'] ########## To modify ########## To modify
 
 # Logger setup for debugging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Create a new stream for markers
-load_time_seconds_before = 2  # Time between each apple drop
+load_time_seconds_before = 1  # Time between each apple drop
 load_time_seconds_marker = 1
-load_time_seconds = 5
+load_time_seconds = 3
 info = StreamInfo('markers', 'Markers', 1, 1/load_time_seconds, 'string', 'MyMarkerStream')
 outlet = StreamOutlet(info)
 sample,timestamp = inlet.pull_chunk(timeout=1.0)
@@ -473,7 +476,7 @@ class Game:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont(None, 36)
         self.marker_sent = False
-
+        ctypes.windll.user32.LockWorkStation()
         self.player_pos = [SCREEN_WIDTH // 2, SCREEN_HEIGHT - PLAYER_HEIGHT]
         self.apple_speed = (SCREEN_HEIGHT -APPLE_SIZE/2  )/ (load_time_seconds * FPS)
         self.start_time = time.time()
@@ -872,7 +875,7 @@ class Game:
                     score_rounded =int(1000*self.score/(self.score + self.failures))/1000
                     Name_score = str(score_rounded).replace('.', '_')+'_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+'_'+str(Date[4])
                     file_path_data = (os.path.join(script_directory,'Data_games', 'Testing_data'+'_'+str(score_rounded).replace('.', '_')+'_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+'_'+str(Date[4])) )
-                    file_path_model  = (os.path.join(scr ;:ipt_directory,'Saved_models', 'finished_score_'+str(score_rounded)+str(Date[1]).replace('.', '_')+'_'+str(Date[2])+'_'+str(Date[3])+'_'+str(Date[4]) ) ) 
+                    file_path_model  = (os.path.join(script_directory,'Saved_models', 'finished_score_'+str(score_rounded)+str(Date[1]).replace('.', '_')+'_'+str(Date[2])+'_'+str(Date[3])+'_'+str(Date[4]) ) ) 
                     
                 # FILE_TO_SAVE=[file_path_data,file_path_model]
                 
