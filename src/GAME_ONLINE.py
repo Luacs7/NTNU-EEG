@@ -20,7 +20,6 @@ import numpy as np
 import mne
 import asrpy
 import gc
-import ctypes
 import numpy as np
 from mne.preprocessing import ICA
 from sklearn.decomposition import PCA
@@ -105,7 +104,7 @@ def epochs_to_stc(epochs,inverse_operator,method = 'dSPM'):
     return stc
 
 
-def pre_process_run_game(raw_fnames ,info,inverse_operator,tmin = -0.5 , tmax = 1 ,f_low = 1, L_H_freq = [(8,12),(12,30)],Brain_visu = True,baseline = (-0.5, 0),Notchs_freq = (50,60),eeg_reject = 150e-3):
+def pre_process_run_game(raw_fnames ,tmin = 0 , tmax = 2.5 ,f_low = 1, L_H_freq = [(8,12),(12,30)],Brain_visu = True,baseline = (-0, 0.5),Notchs_freq = (50,60),eeg_reject = 150e-3):
     """ process data in .set format and do source localisation algorithm """
     
     # Initialiser les listes pour les données
@@ -122,6 +121,18 @@ def pre_process_run_game(raw_fnames ,info,inverse_operator,tmin = -0.5 , tmax = 
     for raw_fname in raw_fnames:
         print('pre-processing of file:',raw_fname)
         raw = mne.io.read_raw_eeglab(raw_fname,preload=True)
+        
+        
+        raw.rename_channels({'Afz' : 'AFz'})
+        
+        # old_ch_names = [ch for ch in raw.info['ch_names'] if 'EEG' in raw.get_channel_types(picks=[ch])]
+        # ch_names = old_ch_names.copy()
+        # # random.shuffle(ch_names)
+        # mapping = dict(zip(old_ch_names, ch_names))
+        # print(mapping)
+        # raw.rename_channels( mapping )
+        info = raw.info
+        inverse_operator = Inverse_calculator( info )
 
         raw.filter( f_low, None)
         raw.notch_filter(Notchs_freq)
@@ -132,15 +143,15 @@ def pre_process_run_game(raw_fnames ,info,inverse_operator,tmin = -0.5 , tmax = 
         # ica = ICA()
         # ica.fit(raw)
         # raw= ica.apply(raw)
-        
-        montage = mne.channels.make_standard_montage('standard_1020')
-        
+    
+        montage = mne.channels.make_standard_montage('standard_1005')
+
         raw.set_montage(montage)
         raw.set_eeg_reference('average', projection=True)
         events , event_id= mne.events_from_annotations(raw)
         event_id_RL= {'right' : event_id['right'] , 'left' : event_id['left']}
         events =mne.pick_events(events, include=[event_id['right'],event_id['left']])
-    
+        print('aaaaaaaaaaaaaaaa',events)
 
         i = 0
         for l_freq, h_freq in L_H_freq:
@@ -150,6 +161,7 @@ def pre_process_run_game(raw_fnames ,info,inverse_operator,tmin = -0.5 , tmax = 
             epochs = mne.Epochs(raw2, events, event_id_RL, tmin, tmax, proj=True, baseline=baseline, reject=reject, preload=True)
             
             y_run =list(epochs.events[:, -1] == event_id['right'])
+            print(y_run)
             if Brain_visu:
                 src = epochs_to_stc(epochs,inverse_operator,method = 'dSPM')
                 X_src= src_data_to_X_data(src)
@@ -157,6 +169,7 @@ def pre_process_run_game(raw_fnames ,info,inverse_operator,tmin = -0.5 , tmax = 
                 del X_src
                 
                 shape = np.shape(X_features)
+                print(shape)
                 X_features = np.reshape(X_features,(shape[0],shape[1]*shape[2]))
                 
             else:
@@ -181,13 +194,8 @@ def pre_process_run_game(raw_fnames ,info,inverse_operator,tmin = -0.5 , tmax = 
         else: 
             X_all_run = np.concatenate([X_all_run,X_run],axis= 0)
             y_all_runs +=y_run
-        print('c',np.shape(X_all_run))
-
         j+=1
-
-
-    print('coucou')
-    return X_all_run , y_all_runs, inverse_operator, info
+    return X_all_run , y_all_runs, info , inverse_operator
 
 def src_data_to_X_data(stc):
     '''extract data from source objects'''
@@ -195,70 +203,7 @@ def src_data_to_X_data(stc):
     for epoch in stc:
         X_src += [epoch.data]
     return X_src
-def pre_process_run(raw_fnames ,tmin = -0.5 , tmax = 1 ,f_low = 1, L_H_freq = [(8,30)],Brain_visu = True,baseline = (None, 0),Notchs_freq = (50,60),eeg_reject = 150e-3):
-    """ process data in .set format and do source localisation algorithm """
-    
-    # Initialiser les listes pour les données
-    X_all_runs = []
-    y_all_runs = []
 
-
-    reject = dict(eeg=eeg_reject)
-
-
-    # Charger les fichiers et créer des époques pour chaque run
-    N_dir = len(raw_fnames)
-    N_freq = len(L_H_freq)
-
-    j = 0
-    for raw_fname in raw_fnames:
-        raw = mne.io.read_raw_eeglab(raw_fname,preload=True)
-
-        raw.filter( f_low, None)
-        raw.notch_filter(Notchs_freq)
-        # Appliquer ASR pour nettoyer les artefacts
-        # asr = asrpy.ASR(sfreq=raw.info["sfreq"], cutoff=20)
-        # asr.fit(raw)
-        # raw = asr.transform(raw)
-        # ica = ICA()
-        # ica.fit(raw)
-        # raw= ica.apply(raw)
-        X_run = []
-        montage = mne.channels.make_standard_montage('standard_1020')
-        
-        raw.set_montage(montage)
-        raw.set_eeg_reference('average', projection=True)
-
-        i = 0
-        for l_freq, h_freq in L_H_freq:
-            print('avancement',i/N_freq,j/N_dir)
-            raw2 = raw.copy()
-            raw2.filter(l_freq, h_freq)       
-            events , event_id= mne.events_from_annotations(raw2)
-            event_id_RL= {'right' : event_id['right'] , 'left' : event_id['left']}
-            events =mne.pick_events(events, include=[event_id['right'],event_id['left']])
-            epochs = mne.Epochs(raw2, events, event_id_RL, tmin, tmax, proj=True, baseline=baseline, reject=reject, preload=True)
-            info = epochs.info
-            if Brain_visu:
-                inverse_operator = Inverse_calculator(info)
-                src = epochs_to_stc(epochs,inverse_operator,method = 'dSPM')
-                X_src= src_data_to_X_data(src)
-                X_run += [X_src]
-                del X_src
-            else:
-                X_run += [epochs.get_data(copy=True)]
-            del raw2
-            i+=1
-        del raw
-        j+=1
-        X_run = np.moveaxis(X_run, 0, 1)
-        y_run = epochs.events[:, -1] == event_id['right']
-
-
-        X_all_runs.append(X_run)
-        y_all_runs.append(y_run)
-        del X_run
-    return X_all_runs , y_all_runs, inverse_operator, info
 def make_featuring(X_features , y_all_runs): 
     '''call extract_temporal_features and reshape the feature in a 2 dim files of size (N_epochs,N_features ) for classification '''
     
@@ -356,7 +301,6 @@ def create_mne_info_from_lsl(inlet_info,ch_names):
     if 'A1' in montage.ch_names:
         ref_index = montage.ch_names.index('A1')
         ref_pos = montage.dig[ref_index + 3]['r']  # +3 to skip fiducials and nasion
-    print(info['chs'][9]['loc'])
     # Find and set locations for each channel if available in the montage
     montage_ch_names = montage.ch_names
     for i, ch_name in enumerate(ch_names):
@@ -368,16 +312,15 @@ def create_mne_info_from_lsl(inlet_info,ch_names):
             if ref_pos is not None:
                 loc[3:6] = ref_pos  # Set the reference channel position
         info['chs'][i]['loc'] = loc
-    montage.plot()  # 2D
-    fig = montage.plot(kind="3d", show=False)  # 3D
-    fig = fig.gca().view_init(azim=70, elev=15)  # set view angle for tutorial
-    plt.show()
+    # montage.plot()  # 2D
+    # fig = montage.plot(kind="3d", show=False)  # 3D
+    # fig = fig.gca().view_init(azim=70, elev=15)  # set view angle for tutorial
     return info
 # %% Path work
 
 # Absolute path of the current script's directory
 script_directory = os.path.dirname(os.path.abspath(__file__))
-Save_model = True
+Save_model = False
 record_game_directory = os.path.join(script_directory, 'RECORDS')
 raw_fnames_dir = find_gaming_set_files(record_game_directory)
 print(record_game_directory)
@@ -387,7 +330,6 @@ print(record_game_directory)
 # training_file =  ['C:/Users/robinaki/Documents/NTNU-EEG/src/Data_games/TRAINING_data_1,0_6_27_14']
 
 # training_file = ['C:/Users/robinaki/Documents/NTNU-EEG/src/Data_games/TRAINING_data_0,0_6_27_16']
-training_file = 0
 
 
 # Construct the absolute path to 'src/APPLE_GAME'
@@ -397,7 +339,9 @@ os.chdir(apple_game_directory)
 Brain_visu = True
 directory_path = "C:/recordings/Game_recordings_test/RECORDS"
 
+Subject_43 = ['C:/recordings/s43/Train_S43.set']
 
+training_file = 0
 # %% Initializing game eeg live
  
 # Trouver un flux EEG disponible (par exemple, par son type)
@@ -413,8 +357,8 @@ description = Inlet_info.desc()
 if n_chan==8:
     ch_names = ['C5', 'C6', 'C3', 'C1', 'FC3', 'C4', 'C2', 'FC4']
 else:
-    ch_names = ['FC2','FC4','FC6','FCz','C6','C4','C2','TP8', 'CP2','CP4','FT7','FT8','FC5','C5','FC1','C3','Cz', 'C1','CP1', 'CPz', 'CP3','CP5', 'F8', 'AF4','F4', 'AFz', 'AF3', 'F7', 'F3', 'FC3', 'CP6', 'TP7', 'stim'] ########## To modify ########## To modify
-
+    # ch_names = ['FC2','FC4','FC6','FCz','C6','C4','C2','TP8', 'CP2','CP4','FT7','FT8','FC5','C5','FC1','C3','Cz', 'C1','CP1', 'CPz', 'CP3','CP5', 'F8', 'AF4','F4', 'AFz', 'AF3', 'F7', 'F3', 'FC3', 'CP6', 'TP7', 'stim'] ########## To modify ########## To modify
+    ch_names = ['F3','FC5','T7','C3','CP5','TP9', 'P5',' P6', 'PO3', 'POz', 'AFz', 'Fz', 'Cz', 'FC1', 'FC2', 'P1', 'Pz', 'P2', 'PO4', 'O1', 'Oz', 'O2', 'F4', 'FC6', 'T8', 'C4', 'CP1', 'CP2', 'CP6', 'TP10', 'PO7', 'PO8'] ########## To modify ########## To modify
 # Logger setup for debugging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -425,7 +369,7 @@ load_time_seconds_marker = 1
 load_time_seconds = 3
 info = StreamInfo('markers', 'Markers', 1, 1/load_time_seconds, 'string', 'MyMarkerStream')
 outlet = StreamOutlet(info)
-sample,timestamp = inlet.pull_chunk(timeout=1.0)
+sample,timestamp = inlet.pull_chunk(timeout=10.0)
 # Constants
 TRAINING_MODE = 2
 SCREEN_WIDTH = 400
@@ -476,7 +420,6 @@ class Game:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont(None, 36)
         self.marker_sent = False
-        ctypes.windll.user32.LockWorkStation()
         self.player_pos = [SCREEN_WIDTH // 2, SCREEN_HEIGHT - PLAYER_HEIGHT]
         self.apple_speed = (SCREEN_HEIGHT -APPLE_SIZE/2  )/ (load_time_seconds * FPS)
         self.start_time = time.time()
@@ -541,11 +484,10 @@ class Game:
 
         return X_featured
     def initialize_model(self, training_file,Inlet_info,ch_names):
-        self.info = create_mne_info_from_lsl(Inlet_info,ch_names)
-        self.inverse_operator = Inverse_calculator(self.info)
+        
         if type(training_file) == type([]):
             if '.set' in training_file[0]:# We verify if training file is a .set files
-                X_all_runs , y_all_runs = pre_process_run_game(training_file,self.info,self.inverse_operator)
+                X_all_runs , y_all_runs,self.info, self.inverse_operator = pre_process_run_game(training_file)
                 self.mean_init = np.mean(X_all_runs,axis = 0)
                 self.std_init = np.std(X_all_runs,axis = 0)
                 X_z_score  = (X_all_runs- self.mean_init)/self.std_init# estimation for unit variance and meaned data
@@ -556,19 +498,27 @@ class Game:
                     X_batch = X_z_score[i:i + batch_size]
                     y_batch = y_all_runs[i:i + batch_size]
                     self.model.partial_fit(X_batch, y_batch, classes=[False,True])
+                if True:
+                        pipeline = make_pipeline(StandardScaler(), SGDClassifier(max_iter=1000, tol=1e-3, random_state=42))
+                        cv = StratifiedKFold(20, shuffle=True)
+                        scores = cross_val_score(pipeline, X_z_score,y_all_runs, cv = cv)
+                        print(f"Cross validation scores: {scores}")
+                        print(f"Mean results for the training set: {scores.mean()}")
+                        Score = scores.mean()
                 print("Model trained succesfully")
                 if self.Save_model:
+
                     Date = time.localtime()
                     dump(self.model,filename =(os.path.join(script_directory, 'Saved_models','init_'+str(Date[1])+'_'+str(Date[2])+'_'+str(Date[3])+':'+str(Date[4]) ) ) )
                     print("Model saved succesfully")
-                if True:
-                    pipeline = make_pipeline(StandardScaler(), SGDClassifier(max_iter=1000, tol=1e-3, random_state=42))
-                    cv = StratifiedKFold(5, shuffle=True)
-                    scores = cross_val_score(pipeline, X_all_runs,y_all_runs, cv = cv)
-                    print(f"Cross validation scores: {scores}")
-                    print(f"Mean: {scores.mean()}")
+
             if 'Data_games' in training_file[0]:
+                self.info = create_mne_info_from_lsl(Inlet_info,ch_names)
+                self.inverse_operator = Inverse_calculator(self.info)
                 self.Create_model_from_files(training_file)
+        else:
+            self.info = create_mne_info_from_lsl(Inlet_info,ch_names)
+            self.inverse_operator = Inverse_calculator(self.info)
         if type(training_file) == type(''):
             self.model = load(training_file)
             print("Model loaded succesfully")
