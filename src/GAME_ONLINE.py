@@ -320,7 +320,7 @@ def create_mne_info_from_lsl(inlet_info,ch_names):
 
 # Absolute path of the current script's directory
 script_directory = os.path.dirname(os.path.abspath(__file__))
-Save_model = False
+Save_model = True
 record_game_directory = os.path.join(script_directory, 'RECORDS')
 raw_fnames_dir = find_gaming_set_files(record_game_directory)
 print(record_game_directory)
@@ -341,7 +341,7 @@ directory_path = "C:/recordings/Game_recordings_test/RECORDS"
 
 Subject_43 = ['C:/recordings/s43/Train_S43.set']
 
-training_file = 0
+training_file = 1
 # %% Initializing game eeg live
  
 # Trouver un flux EEG disponible (par exemple, par son type)
@@ -526,6 +526,7 @@ class Game:
             training_file_find = find_model(os.path.join(script_directory,'Data_games'), 'TRAINING_data')
 
             if len(training_file_find)==0:
+                print('no training file found')
                 training_file = 0
             else:
                 print(training_file_find)
