@@ -32,6 +32,18 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression,SGDClassifier
 from sklearn.feature_selection import SelectFromModel
 # %% definition of processing data function 
+def find_files(directory,startwith,endwith):
+    '''Find files with specific beginning and end '''
+
+    matching_files = []
+
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file.startswith(startwith) and file.endswith(endwith):
+                if not(os.path.join(root, file) in matching_files):
+                    matching_files.append(os.path.join(root, file))
+    
+    return matching_files
 def extract_temporal_features_live(X):
     """
     Extact mean, std of epochs from one raw data
@@ -40,6 +52,7 @@ def extract_temporal_features_live(X):
     std = np.std(X, axis=-1)
     return [mean,std]
 def extract_temporal_features(X):
+
     """
     Extact mean, std of epochs from a list of raw data 
     """
@@ -51,18 +64,9 @@ def extract_temporal_features(X):
     return features
 def find_gaming_set_files(directory):
     '''Find gaming .set files '''
-    # Liste pour stocker les chemins des fichiers correspondants
-    matching_files = []
-
-    # Parcourir tous les fichiers dans le répertoire donné
-    for root, _, files in os.walk(directory):
-        for file in files:
-            # Vérifier si le fichier commence par "GAMING" et se termine par ".set"
-            if file.startswith("GAMING") and file.endswith(".set"):
-                # Ajouter le chemin complet du fichier à la liste
-                matching_files.append(os.path.join(root, file))
-    
-    return matching_files
+    startwith = "GAMING"
+    endwith = ".set"
+    return find_files(directory,startwith,endwith)
 def Inverse_calculator(info):
     '''Calcul of the inverse operator and apply it on epochs to return source'''
 
@@ -92,7 +96,7 @@ def Inverse_calculator(info):
 
     inverse_operator = mne.minimum_norm.make_inverse_operator(info, fwd, noise_cov, loose=0.2, depth=0.8)
     return inverse_operator
-def epochs_to_stc(epochs,inverse_operator,method = 'dSPM'):
+def epochs_to_stc(epochs,inverse_operator,method = 'sLORETA'):
     stc= mne.minimum_norm.apply_inverse_epochs(
         epochs,
         inverse_operator,
@@ -104,7 +108,7 @@ def epochs_to_stc(epochs,inverse_operator,method = 'dSPM'):
     return stc
 
 
-def pre_process_run_game(raw_fnames ,tmin = 0 , tmax = 2.5 ,f_low = 1, L_H_freq = [(8,12),(12,30)],Brain_visu = True,baseline = (-0, 0.5),Notchs_freq = (50,60),eeg_reject = 150e-3):
+def pre_process_run_game(raw_fnames ,tmin = 0 , tmax = 2.5 ,f_low = 1, L_H_freq = [(8,12),(12,30)],Brain_visu = True,baseline = (-0, 0.5),Notchs_freq = (50,60),eeg_reject = 150):
     """ process data in .set format and do source localisation algorithm """
     
     # Initialiser les listes pour les données
@@ -150,20 +154,21 @@ def pre_process_run_game(raw_fnames ,tmin = 0 , tmax = 2.5 ,f_low = 1, L_H_freq 
         raw.set_eeg_reference('average', projection=True)
         events , event_id= mne.events_from_annotations(raw)
         event_id_RL= {'right' : event_id['right'] , 'left' : event_id['left']}
+        print(event_id_RL)
         events =mne.pick_events(events, include=[event_id['right'],event_id['left']])
-        print('aaaaaaaaaaaaaaaa',events)
+
 
         i = 0
         for l_freq, h_freq in L_H_freq:
             print('avancement',i/N_freq,j/N_dir)
             raw2 = raw.copy()
             raw2.filter(l_freq, h_freq)       
-            epochs = mne.Epochs(raw2, events, event_id_RL, tmin, tmax, proj=True, baseline=baseline, reject=reject, preload=True)
+            epochs = mne.Epochs(raw2, events, event_id_RL, tmin, tmax, proj=True, baseline=baseline, preload=True)#  , reject=reject
             
             y_run =list(epochs.events[:, -1] == event_id['right'])
             print(y_run)
             if Brain_visu:
-                src = epochs_to_stc(epochs,inverse_operator,method = 'dSPM')
+                src = epochs_to_stc(epochs,inverse_operator,method = 'sLORETA')
                 X_src= src_data_to_X_data(src)
                 X_features = extract_temporal_features(X_src)
                 del X_src
@@ -341,7 +346,13 @@ directory_path = "C:/recordings/Game_recordings_test/RECORDS"
 
 Subject_43 = ['C:/recordings/s43/Train_S43.set']
 
-training_file = 1
+trains_files = find_files(os.path.join(script_directory, 'Data_games'),'TRAINING','')
+tests_files= find_files(os.path.join(script_directory, 'Data_games'),'Testing','')
+training_file = trains_files + tests_files
+
+print(training_file)
+
+
 # %% Initializing game eeg live
  
 # Trouver un flux EEG disponible (par exemple, par son type)
@@ -364,12 +375,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Create a new stream for markers
-load_time_seconds_before = 1  # Time between each apple drop
+load_time_seconds_before = 3  # Time between each apple drop
 load_time_seconds_marker = 1
-load_time_seconds = 3
+load_time_seconds = 7
 info = StreamInfo('markers', 'Markers', 1, 1/load_time_seconds, 'string', 'MyMarkerStream')
 outlet = StreamOutlet(info)
-sample,timestamp = inlet.pull_chunk(timeout=10.0)
+sample,timestamp = inlet.pull_chunk(timeout=7 , max_samples =int( Sfreq * 11))
+
 # Constants
 TRAINING_MODE = 2
 SCREEN_WIDTH = 400
@@ -398,8 +410,8 @@ class Game:
         pygame.init()
         self.Save_model =Save_model  
         # definition of pre-processing constant 
-        self.time_of_window = 4
-        self.L_H_freq = [(8,30)]
+        self.time_of_window = 7
+        self.L_H_freq = [(8,12)]# ,(13,20),(21,30)
         self.f_low = 1
         
         self.Notchs_freq = (50,60)
@@ -415,6 +427,7 @@ class Game:
             self.Y_stock = []
         self.score = 0
         self.failures = 0
+        self.end_value = 20
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT + LOAD_BAR_HEIGHT))
         pygame.display.set_caption("Apple Catcher Game")
         self.clock = pygame.time.Clock()
@@ -442,32 +455,36 @@ class Game:
         self.hand_status = {"left": "closed", "right": "closed"}
 
 
-
     def CREATE_EPOCHS(self,raw):
         # Assurez-vous que les timestamps et samples ont des formes compatibles
         X_featured = []
         for l_freq, h_freq in self.L_H_freq:
             raw2 = raw.copy()
-            raw2.filter(l_freq, h_freq) 
+            raw2.filter(l_freq, h_freq)
+            print(np.shape(raw2.get_data()))
             # Définir les périodes d'intérêt pour couvrir tout le timestamp
             tmin, tmax = -0.5, self.time_crop # en secondes
             # Créer des epochs
             epochs_ = mne.Epochs(raw2, self.events,  tmin=tmin, tmax=tmax,baseline=(-0.5,0), preload=True)#
-            src = epochs_to_stc(epochs_,self.inverse_operator,method = 'dSPM')
+
+            src = epochs_to_stc(epochs_,self.inverse_operator,method = 'sLORETA')
             X_src = src[0].data
             print(np.shape(np.array(X_src)))
             X_featured += [extract_temporal_features_live(X_src)]
         return X_featured
+    
     def stock_features(self,y):
         self.X_F_stock.append(self.X_featured[0]) 
         self.Y_stock.append(y) 
+
     def pre_process_run_update(self):
         # Convertir les timestamps en secondes (s'ils sont en millisecondes)
-        TIME_STAMPLE= int((self.time_of_window-self.time_crop)*self.info['sfreq'])
+        TIME_STAMPLE= int((self.time_of_window-self.time_crop)*self.info['sfreq'])-1
         print('TIME_STAMPLE',TIME_STAMPLE)
         self.events = np.array([[TIME_STAMPLE, 0, 1]])  # Un seul événement couvrant tout l'epoch A CHANGER POUR RIGHT ET LEFT
         
         # Créer un RawArray
+        print('size of sample:',np.shape(self.sample))
         raw = mne.io.RawArray(np.moveaxis(self.sample,1,0), self.info)
         raw.filter( self.f_low, None)
         raw.notch_filter(self.Notchs_freq)
@@ -478,11 +495,12 @@ class Game:
 
         X_featured = self.CREATE_EPOCHS(raw)
         X_featured = np.array(X_featured)
-        print('shape',np.shape(X_featured))
+        
         X_featured = X_featured.reshape(-1)
         X_featured = X_featured.reshape(1, -1)
-
+        print('shape of X_feature is: ',np.shape(X_featured))
         return X_featured
+    
     def initialize_model(self, training_file,Inlet_info,ch_names):
         
         if type(training_file) == type([]):
@@ -540,7 +558,9 @@ class Game:
         self.X_featured = self.pre_process_run_update()
         if self.TRAINING_MODE==0:
             self.X_z_score  = (self.X_featured- self.mean_init)/self.std_init# estimation for unit variance and meaned data
-            self.p = self.model.predict(self.X_z_score)
+            # self.p = self.model.predict(self.X_z_score)
+            self.p = self.model_off.predict(self.X_z_score)
+            print(self.p)
         return self.p
     def get_random_apple_position(self):
         Choice_apple = self.APPLE_ORDER[self.score+self.failures]
@@ -633,28 +653,38 @@ class Game:
         self.screen.blit(score_text, (10, 10))
         self.screen.blit(failures_text, (10, 50))
 
-    def Create_model_from_files(self,training_file,batch_size = 1):
+    def Create_model_from_files(self,training_file):
         self.model = SGDClassifier(max_iter=1000, tol=1e-3, random_state=42)
+        [X_run , y_run, Table_score] = [None , None , None]
         for j in range(len(training_file)):
             training_set = training_file[j]
-            [X_z_score , y_all_runs, Table_score] = [None , None , None]
+           
             with open(training_set, 'rb') as file:
                 # Deserialize and retrieve the variable from the file
                 [X_run , y_run, Table_score] = pickle.load(file)
             if j==0:
                 X_all_run = X_run
                 y_all_runs = y_run
-            else: 
+            elif np.shape(X_all_run)[1]==np.shape(X_run)[1]: 
                 X_all_run = np.concatenate([X_all_run,X_run],axis= 0)
-                y_all_runs +=y_run
+                y_all_runs = np.concatenate([y_all_runs,y_run],axis= 0)
+                print("concatenation of features:",j)
         self.mean_init = np.mean(X_all_run,axis = 0)
         self.std_init = np.std(X_all_run,axis = 0)
+        print(np.shape(self.std_init))
         X_z_score  = (X_all_run- self.mean_init)/self.std_init# estimation for unit variance and meaned data
-        for i in range(0, len(X_z_score), batch_size):
-            X_batch = X_z_score[i:i + batch_size]
-            y_batch = y_all_runs[i:i + batch_size]
-            self.model.partial_fit(X_batch, y_batch, classes=[False,True])
+        self.model.partial_fit(X_z_score, y_all_runs, classes=[False,True])
         print("Model trained succesfully")
+        if True:
+            self.model_off = RandomForestClassifier()
+            self.model_off.fit(X_z_score,y_all_runs)
+            print('size dataset:',np.shape(X_z_score),np.shape(y_all_runs))
+            pipeline = make_pipeline(RandomForestClassifier())
+            cv = StratifiedKFold(5, shuffle=True)
+            scores = cross_val_score(pipeline, X_z_score,y_all_runs, cv = cv)
+            print(f"Cross validation scores: {scores}")
+            print(f"Mean results for the training set: {scores.mean()}")
+            Score = scores.mean()
         return None
 
     def draw_load_bar(self):
@@ -685,7 +715,10 @@ class Game:
         if elapsed_time >= self.ldtb + self.ldtm  and self.marker_not_finished:
             self.input_processed= False
             self.marker_not_finished = False
-            self.sample,self.timestamp = inlet.pull_chunk(timeout=self.time_of_window)
+            print('look for time stamp')
+            self.sample,self.timestamp = inlet.pull_chunk(timeout= self.time_of_window, max_samples =int(self.time_of_window* self.info['sfreq']))
+            print('timestamp received')
+            self.sample =np.array(self.sample) *1e-6 
             self.data_to_p()
         if elapsed_time >= self.ldtb + self.ldtm :
             self.marker_finished = True
@@ -779,6 +812,7 @@ class Game:
 
                 elif event.type == pygame.KEYDOWN:
                     if actif:
+                        
                         if event.key == pygame.K_RETURN:
                             print(chaine_texte)  # Affiche la chaîne entrée dans la console
                             self.end_value=int(chaine_texte)
